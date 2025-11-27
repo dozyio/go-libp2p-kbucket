@@ -59,6 +59,9 @@ type RoutingTable struct {
 	usefulnessGracePeriod time.Duration
 
 	df *peerdiversity.Filter
+
+	// FHE context for privacy-preserving queries (optional)
+	fheCtx *FHEContext
 }
 
 // NewRoutingTable creates a new routing table with a given bucketsize, local ID, and latency tolerance.
