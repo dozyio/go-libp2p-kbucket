@@ -47,8 +47,6 @@ func NewFHEContext() (*FHEContext, error) {
 	cc.Enable(openfhe.KEYSWITCH)
 	cc.Enable(openfhe.LEVELEDSHE)
 
-	// --- FIX: Get and store the Ring Dimension ---
-	// For BGV, the number of slots is equal to the ring dimension
 	ringDim := cc.GetRingDimension()
 
 	return &FHEContext{cc: cc, params: params, ringDim: int(ringDim)}, nil
@@ -123,7 +121,6 @@ func (ctx *FHEContext) CreateQueryVector(cpl int) ([]*openfhe.Ciphertext, error)
 
 	vector := make([]*openfhe.Ciphertext, MaxCPL)
 
-	// --- FIX: Create full vectors of 0s or 1s ---
 	fullZeroVector := make([]int64, ctx.ringDim) // Already all 0s
 
 	fullOneVector := make([]int64, ctx.ringDim)

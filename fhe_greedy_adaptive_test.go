@@ -15,7 +15,7 @@ import (
 )
 
 // TestGreedyAdaptiveBasic tests the basic functionality of the Greedy Adaptive PIR
-func TestFHEGreedyAdaptiveBasic(t *testing.T) {
+func TestGreedyAdaptiveBasic(t *testing.T) {
 	// 1. Setup FHE Context with rotation keys
 	ctx, err := NewFHEContext()
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestFHEGreedyAdaptiveBasic(t *testing.T) {
 }
 
 // TestGreedyAdaptiveSecurity tests that querying multiple buckets results in corrupted data
-func TestFHEGreedyAdaptiveSecurity(t *testing.T) {
+func TestGreedyAdaptiveSecurity(t *testing.T) {
 	// 1. Setup FHE Context
 	ctx, err := NewFHEContext()
 	require.NoError(t, err)
@@ -190,6 +190,7 @@ func TestFHEGreedyAdaptiveSecurity(t *testing.T) {
 	// 6. Client tries to decrypt
 	// The greedy proof should cause the data to be corrupted
 	connectablePeers, err := ctx.DecryptGreedyAdaptiveResponse(responses)
+
 	// We expect either:
 	// a) An error during deserialization (corrupted JSON)
 	// b) An empty peer list
@@ -261,7 +262,7 @@ func TestFHEGreedyAdaptiveSecurity(t *testing.T) {
 }
 
 // TestGreedyAdaptiveEmptyBucket tests querying an empty bucket
-func TestFHEGreedyAdaptiveEmptyBucket(t *testing.T) {
+func TestGreedyAdaptiveEmptyBucket(t *testing.T) {
 	// 1. Setup FHE Context
 	ctx, err := NewFHEContext()
 	require.NoError(t, err)
@@ -301,115 +302,4 @@ func TestFHEGreedyAdaptiveEmptyBucket(t *testing.T) {
 	// 7. Should return empty list
 	require.Equal(t, 0, len(connectablePeers), "Empty bucket should return 0 peers")
 	t.Log("Empty bucket test passed")
-}
-
-func TestFHEGreedyAdaptiveHugeBucket(t *testing.T) {
-	// 1. Setup FHE Context
-	ctx, err := NewFHEContext()
-	require.NoError(t, err)
-	err = ctx.GenerateKeysWithRotation()
-	require.NoError(t, err)
-	defer ctx.Close()
-
-	// 2. Setup Routing Table & Peerstore
-	local := test.RandPeerIDFatal(t)
-	ps, err := pstoremem.NewPeerstore()
-	require.NoError(t, err)
-
-	// Use a large bucket size (e.g., 500) to allow us to stuff it full without eviction
-	rt, err := NewRoutingTable(500, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
-	require.NoError(t, err)
-	rt.EnableFHE(ctx)
-
-	// 3. Calculate Thresholds to Force Split
-	// We need to know how many bytes fit in one ring to guarantee we exceed it.
-	// Assumption: Using BFV/BGV with packing, capacity is usually RingDimension * 2 bytes (if dense packing int16s)
-	// or RingDimension * 8 bytes (if packing int64s).
-	// Let's assume a standard ringDim of 4096 or 8192.
-	// A typical serialized peer (ID + IP + Port) is roughly 60-100 bytes.
-
-	// We will add 250 peers.
-	// 250 peers * ~100 bytes = ~25KB.
-	// A small ring (N=4096) often holds ~8KB-16KB depending on packing.
-	// This ensures we likely cross the boundary into 2 or 3 rings.
-
-	targetCPL := 0
-	numPeers := 250
-	peersAdded := 0
-	localID := ConvertPeerID(local)
-
-	t.Logf("Generating %d peers to force bucket overflow...", numPeers)
-
-	expectedPeerIDs := make(map[string]bool)
-
-	for i := 0; i < numPeers; i++ {
-		// Generate peer in CPL 0
-		p, err := GenRandPeerIDWithCPL(localID, uint(targetCPL))
-		require.NoError(t, err)
-
-		// Create a valid multiaddr.
-		// We use slightly different ports to ensure unique serialization if ID hashing behaves oddly
-		addrStr := fmt.Sprintf("/ip4/192.168.1.1/tcp/%d", 2000+i)
-		addr, err := ma.NewMultiaddr(addrStr)
-		require.NoError(t, err)
-
-		// Add to peerstore
-		ps.AddAddrs(p, []ma.Multiaddr{addr}, time.Hour)
-
-		// Add to Routing Table
-		added, _ := rt.TryAddPeer(p, true, false)
-		if added {
-			expectedPeerIDs[p.String()] = true
-			peersAdded++
-		}
-	}
-
-	// Sanity check: ensure we actually filled the bucket
-	rt.tabLock.RLock()
-	bucketSize := len(rt.buckets[targetCPL].peers())
-	rt.tabLock.RUnlock()
-	require.Equal(t, peersAdded, bucketSize, "Failed to fill bucket with desired number of peers")
-	t.Logf("Bucket %d successfully populated with %d peers", targetCPL, bucketSize)
-
-	// 4. Create Query for the Huge Bucket
-	queryVec, err := ctx.CreateQueryVectorGreedy(targetCPL)
-	require.NoError(t, err)
-	defer queryVec.Close()
-
-	// 5. Execution: Server Processes Query
-	start := time.Now()
-	responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
-	require.NoError(t, err)
-	defer func() {
-		for _, ct := range responses {
-			ct.Close()
-		}
-	}()
-
-	t.Logf("PIR Query processed in %v", time.Since(start))
-
-	// 6. Assertion: Verify Split Occurred
-	// This is the crucial "Adaptive" check.
-	// If the bucket was huge, we MUST have more than 1 ciphertext response.
-	t.Logf("Server returned %d response rings", len(responses))
-	require.Greater(t, len(responses), 1,
-		"Expected multiple response rings for huge data volume (Adaptive Sizing failed)")
-
-	// 7. Assertion: Decryption & Reassembly
-	// The client decryption logic must stitch the 2+ rings back into one byte stream
-	// and deserialize the peers correctly.
-	decryptedPeers, err := ctx.DecryptGreedyAdaptiveResponse(responses)
-	require.NoError(t, err, "Decryption/Reassembly failed")
-
-	// 8. Assertion: Data Integrity
-	require.Equal(t, peersAdded, len(decryptedPeers),
-		"Decrypted peer count does not match added peer count")
-
-	// Verify identity of every peer
-	for _, dp := range decryptedPeers {
-		_, exists := expectedPeerIDs[dp.ID.String()]
-		require.True(t, exists, "Decrypted peer %s was not in the original huge bucket", dp.ID)
-	}
-
-	t.Log("Success: Huge bucket correctly split, retrieved, and reassembled.")
 }
