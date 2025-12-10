@@ -49,7 +49,12 @@ func main() {
 	}
 	defer fheCtx.Close()
 
-	err = fheCtx.GenerateKeysWithRotation()
+	// naive key rotations
+	// err = fheCtx.GenerateKeysWithRotation()
+	// use power-of-two keys
+	err = fheCtx.GenerateKeysPowerOfTwo()
+	// single unit keys
+	// err = fheCtx.GenerateKeysMinimal()
 	if err != nil {
 		log.Fatalf("Failed to generate FHE keys: %v", err)
 	}

@@ -159,7 +159,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, 
 	return responses, nil
 }
 
-// GetBucketPIRGreedyAdaptive performs a secure, capacity-adaptive PIR query.
+// GetBucketPIRGreedyAdaptiveNormalized performs a secure, capacity-adaptive PIR query.
 //
 // Security: Uses "Destructive Summation" to ensure only 1 bucket is retrievable.
 // Privacy: Uses GetNormalizedPeers (Peer2PIR) to ensure every query returns k peers,
@@ -282,7 +282,13 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 
 			// B. Extract Selector Bit 'i' from Query
 			// We rotate the query so bit 'i' moves to pos 0
-			rotatedQuery, err := cc.EvalRotate(queryCt, int32(i))
+
+			// naive key rotations
+			// rotatedQuery, err := cc.EvalRotate(queryCt, int32(i))
+			// power-of-two rotations
+			rotatedQuery, err := rt.fheCtx.RotateComposite(queryCt, i)
+			// single unit rotations
+			// rotatedQuery, err := rt.fheCtx.RotateIterative(queryCt, i)
 			if err != nil {
 				pt.Close()
 				continue
@@ -290,7 +296,13 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 
 			// C. Replicate Selector to cover this chunk
 			// We need a mask of [1,1,1...] matching ringDim
+
+			// standard extract
 			selector, err := rt.extractAndReplicateBit(cc, rotatedQuery, ringDim)
+
+			// single unit extract
+			// selector, err := rt.extractAndReplicateBitIterative(cc, rotatedQuery, ringDim)
+
 			rotatedQuery.Close()
 			if err != nil {
 				pt.Close()
@@ -357,6 +369,51 @@ func (rt *RoutingTable) extractAndReplicateBit(cc *openfhe.CryptoContext, queryW
 
 		if current != bitOnly {
 			current.Close() // Close intermediate results
+		}
+		current = summed
+	}
+
+	return current, nil
+}
+
+// extractAndReplicateBitIterative performs replication using only the -1 key.
+func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, count int) (*openfhe.Ciphertext, error) {
+	// 1. Mask to isolate bit 0
+	mask := make([]int64, rt.fheCtx.ringDim)
+	mask[0] = 1
+	maskPt, _ := cc.MakePackedPlaintext(mask)
+
+	current, err := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
+	maskPt.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Replicate using doubling algorithm, but shifting iteratively
+	// We still use the "doubling" strategy (1->2->4->8), but the *shift* itself
+	// is done by calling RotateIterative(size).
+	for size := 1; size < count; size *= 2 {
+		// Rotate right by 'size' (using -1 key iteratively)
+		rotated, err := rt.fheCtx.RotateIterative(current, -size)
+		if err != nil {
+			if size > 1 {
+				current.Close()
+			}
+			return nil, err
+		}
+
+		// Add: current + rotated
+		summed, err := cc.EvalAdd(current, rotated)
+		rotated.Close()
+		if err != nil {
+			if size > 1 {
+				current.Close()
+			}
+			return nil, err
+		}
+
+		if size > 1 {
+			current.Close()
 		}
 		current = summed
 	}

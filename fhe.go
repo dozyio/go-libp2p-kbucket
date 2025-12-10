@@ -35,7 +35,9 @@ func NewFHEContext() (*FHEContext, error) {
 
 	params.SetPlaintextModulus(65537)
 	params.SetMultiplicativeDepth(1)
+	params.SetRingDim(8192)
 	params.SetScalingTechnique(openfhe.FIXEDMANUAL)
+	// params.SetKeySwitchTechnique(openfhe.BV)
 
 	cc, err := openfhe.NewCryptoContextBGV(params)
 	if err != nil {
@@ -94,12 +96,148 @@ func (ctx *FHEContext) GenerateKeysWithRotation() error {
 		indexList = append(indexList, -shift)
 	}
 
+	fmt.Printf("GenerateKeysWithRotation indexList (%d): %v\n", len(indexList), indexList)
+
 	err = ctx.CC.EvalRotateKeyGen(kp, indexList)
 	if err != nil {
 		return fmt.Errorf("failed to generate rotation keys: %w", err)
 	}
 
 	return nil
+}
+
+// GenerateKeysPowerOfTwo generates a reduced set of rotation keys (powers of two only).
+// This reduces key size by ~50% compared to GenerateKeysWithRotation.
+func (ctx *FHEContext) GenerateKeysPowerOfTwo() error {
+	kp, err := ctx.CC.KeyGen()
+	if err != nil {
+		return err
+	}
+	ctx.KP = kp
+
+	// Generate MultKey (Evaluation Key)
+	ctx.CC.EvalMultKeyGen(kp)
+
+	indexList := make([]int32, 0)
+
+	// 1. Positive Powers of 2 (for CPL extraction)
+	// Instead of 0..MaxCPL, we only generate 1, 2, 4, 8, 16...
+	for i := 1; i < MaxCPL; i *= 2 {
+		indexList = append(indexList, int32(i))
+	}
+
+	// 2. Negative Powers of 2 (for replication/doubling)
+	// We still need these for the efficient doubling phase.
+	for shift := int32(1); shift < int32(ctx.ringDim); shift *= 2 {
+		indexList = append(indexList, -shift)
+	}
+
+	fmt.Printf("GenerateKeysPowerOfTwo: indexList (%d): %v\n", len(indexList), indexList)
+
+	err = ctx.CC.EvalRotateKeyGen(kp, indexList)
+	if err != nil {
+		return fmt.Errorf("failed to generate rotation keys: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateKeysMinimal generates only the unit step keys.
+// This results in the smallest possible keys size
+func (ctx *FHEContext) GenerateKeysMinimal() error {
+	kp, err := ctx.CC.KeyGen()
+	if err != nil {
+		return err
+	}
+	ctx.KP = kp
+
+	// Generate MultKey (Evaluation Key)
+	ctx.CC.EvalMultKeyGen(kp)
+
+	// ONLY generate keys for +1 (Left) and -1 (Right)
+	// We will compose all other rotations by repeating these.
+	indexList := []int32{1, -1}
+
+	err = ctx.CC.EvalRotateKeyGen(kp, indexList)
+	if err != nil {
+		return fmt.Errorf("failed to generate rotation keys: %w", err)
+	}
+
+	return nil
+}
+
+// RotateComposite rotates a ciphertext by k positions using only power-of-two keys.
+// It decomposes k (e.g., 23) into powers of 2 (16 + 4 + 2 + 1) and applies them sequentially.
+func (ctx *FHEContext) RotateComposite(ct *openfhe.Ciphertext, k int) (*openfhe.Ciphertext, error) {
+	if k == 0 {
+		return ct.Clone()
+	}
+
+	current := ct
+	isFirst := true
+
+	// Decompose k into powers of 2
+	for shift := 1; shift <= k; shift *= 2 {
+		if (k & shift) != 0 {
+			// Apply rotation for this bit
+			next, err := ctx.CC.EvalRotate(current, int32(shift))
+			if err != nil {
+				// If we failed and have intermediate results, close them
+				if !isFirst {
+					current.Close()
+				}
+				return nil, err
+			}
+
+			// Clean up intermediate results (but never close the original input 'ct')
+			if !isFirst {
+				current.Close()
+			}
+			current = next
+			isFirst = false
+		}
+	}
+	return current, nil
+}
+
+// RotateIterative rotates a ciphertext by k positions using only the +1 or -1 keys.
+// This trades computation time (latency) for massive bandwidth savings.
+func (ctx *FHEContext) RotateIterative(ct *openfhe.Ciphertext, k int) (*openfhe.Ciphertext, error) {
+	if k == 0 {
+		return ct.Clone()
+	}
+
+	// Determine direction and unit step
+	step := int32(1) // Rotate Left (+1)
+	count := k
+	if k < 0 {
+		step = -1 // Rotate Right (-1)
+		count = -k
+	}
+
+	current := ct
+
+	// Apply the rotation 'count' times
+	// e.g., Rotate(4) = Rotate(1) -> Rotate(1) -> Rotate(1) -> Rotate(1)
+	for i := 0; i < count; i++ {
+		// 1. Perform one unit step
+		next, err := ctx.CC.EvalRotate(current, step)
+		if err != nil {
+			// If we fail partway, clean up intermediate ciphertexts
+			if i > 0 {
+				current.Close() // Only close if we own it (not the input ct)
+			}
+			return nil, err
+		}
+
+		// 2. Clean up the previous step's memory
+		if i > 0 {
+			current.Close()
+		}
+		current = next
+	}
+
+	return current, nil
 }
 
 // Close releases FHE resources.
