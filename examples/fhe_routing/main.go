@@ -36,7 +36,9 @@ import (
 //   3. Run: ./fhe_routing
 
 func main() {
-	fmt.Println("=== FHE-Based Private Routing Table Lookup (Greedy Adaptive PIR) ===\n")
+	fmt.Println("=== FHE-Based Private Routing Table Lookup (Greedy Adaptive PIR With Normalized Routing Table) ===")
+
+	bucketSize := 20
 
 	// Step 1: Set up FHE context
 	fmt.Println("1. Setting up FHE context...")
@@ -64,7 +66,7 @@ func main() {
 	}
 
 	rt, err := kbucket.NewRoutingTable(
-		20,            // bucket size
+		bucketSize,    // bucket size
 		localID,       // local node ID
 		time.Hour,     // max latency
 		ps,            // peerstore (metrics)
@@ -85,13 +87,13 @@ func main() {
 
 	// Strategy: Add peers across different CPL ranges to create multiple buckets
 	// This ensures the routing table splits into more buckets, allowing more total peers
-	peers := make([]peer.ID, 0, 200)
+	peers := make([]peer.ID, 0, 100000)
 
 	// Add peers for CPL 0-15 to force bucket splitting
 	// Each CPL gets multiple peers to fill buckets and trigger splits
-	for cpl := 0; cpl < 16; cpl++ {
-		peersForCPL := 25 // Add 25 peers per CPL level
-		for i := 0; i < peersForCPL; i++ {
+	for cpl := range 16 {
+		peersForCPL := bucketSize // Add k peers per CPL level
+		for i := range peersForCPL {
 			// Generate a peer with specific CPL to local node
 			p, err := kbucket.GenRandPeerIDWithCPL(localID, uint(cpl))
 			if err != nil {
@@ -123,6 +125,7 @@ func main() {
 
 	fmt.Printf("   ✓ Added %d peers to routing table\n", rt.Size())
 	fmt.Printf("   ✓ Routing table will auto-expand as needed (bucket splitting)\n")
+	rt.Print()
 
 	// Step 4: Client creates a target ID (what they're searching for)
 	fmt.Println("\n4. Client selects target peer to search for...")
@@ -137,8 +140,11 @@ func main() {
 
 	// Step 5: Traditional (non-private) lookup for comparison
 	fmt.Println("\n5. Traditional lookup (server learns target)...")
+	// Calculate which bucket will be used (same logic as NearestPeers)
+	lookupCPL := kbucket.CommonPrefixLen(targetID, localID)
+	fmt.Printf("   Bucket index used: %d (based on CPL between target and local node)\n", lookupCPL)
 	start := time.Now()
-	traditionalPeers := rt.NearestPeers(targetID, 10)
+	traditionalPeers := rt.NearestPeers(targetID, 20)
 	traditionalDuration := time.Since(start)
 	fmt.Printf("   Found %d peers in %v\n", len(traditionalPeers), traditionalDuration)
 
@@ -160,7 +166,7 @@ func main() {
 	// Server processes the encrypted query
 	fmt.Println("   b) Server processes encrypted query...")
 	queryStart := time.Now()
-	responseCts, err := rt.GetBucketPIRGreedyAdaptive(queryCt, ps)
+	responseCts, err := rt.GetBucketPIRGreedyAdaptiveNormalized(queryCt, ps)
 	if err != nil {
 		log.Fatalf("Failed to get bucket: %v", err)
 	}
@@ -192,7 +198,7 @@ func main() {
 	for i, cp := range bucketPeers {
 		bucketPeerIDs[i] = cp.ID
 	}
-	kNearest := findKNearest(bucketPeerIDs, targetID, 10)
+	kNearest := findKNearest(bucketPeerIDs, targetID, 20)
 	fmt.Printf("      ✓ Found %d nearest peers\n", len(kNearest))
 
 	// Step 7: Compare results
@@ -211,29 +217,51 @@ func main() {
 	fmt.Printf("   Security:     Destructive Summation ensures only 1 bucket retrievable\n")
 
 	// Verify correctness
-	fmt.Println("\n8. Verifying correctness...")
-	if len(kNearest) != len(traditionalPeers) {
-		fmt.Printf("   ⚠ Different result sizes: FHE=%d, Traditional=%d\n",
-			len(kNearest), len(traditionalPeers))
-	} else {
-		matches := 0
-		for i := range kNearest {
-			if kNearest[i] == traditionalPeers[i] {
-				matches++
-			}
-		}
-		fmt.Printf("   ✓ %d/%d peers match (%.1f%% accuracy)\n",
-			matches, len(kNearest), float64(matches)/float64(len(kNearest))*100)
+	matches := 0
+	fmt.Println("\n8. Verifying similar results...")
+
+	// Create a map for O(1) lookups
+	tradMap := make(map[peer.ID]bool)
+	for _, p := range traditionalPeers {
+		tradMap[p] = true
 	}
 
-	fmt.Println("\n=== Example Complete ===")
-	fmt.Println("\nKey Takeaways:")
-	fmt.Println("  • Greedy Adaptive PIR uses single packed ciphertext (not 24)")
-	fmt.Println("  • Adapts response size to bucket capacity (1+ ciphertexts)")
-	fmt.Println("  • Server never learns the target peer ID")
-	fmt.Println("  • Destructive Summation ensures only 1 bucket is retrievable")
-	fmt.Println("  • Client can filter results locally for exact K-nearest")
-	fmt.Println("  • Performance is excellent for privacy-sensitive applications")
+	for _, p := range kNearest {
+		if tradMap[p] {
+			matches++
+		}
+	}
+
+	fmt.Printf("   ✓ %d/%d peers match (%.1f%% accuracy)\n",
+		matches, len(kNearest), float64(matches)/float64(len(kNearest))*100)
+
+	// Verify correctness
+	fmt.Println("\n8. Verifying Routing Convergence...")
+
+	// Calculate the distance from Local Node to Target
+	localDist := kbucket.Xor(localID, targetID)
+
+	validHops := 0
+	for _, p := range kNearest {
+		// Calculate distance from Retrieved Peer to Target
+		pID := kbucket.ConvertPeerID(p)
+		pDist := kbucket.Xor(pID, targetID)
+
+		// Check if the Retrieved Peer is strictly closer than Local Node
+		if distLess(pDist, localDist) {
+			validHops++
+		}
+	}
+
+	fmt.Printf("   ✓ %d/%d peers are closer to the target than the current server.\n", validHops, len(kNearest))
+
+	if validHops > 0 {
+		fmt.Println("   ✓ SUCCESS: The private lookup returned peers that allow routing to proceed.")
+	} else {
+		// Note: In a very sparse network or edge case, 0 is theoretically possible
+		// if the server itself is the closest node, but unlikely with 20 peers.
+		fmt.Println("   ⚠ FAILURE: No progress made towards target.")
+	}
 }
 
 // findKNearest finds the K nearest peers to a target ID from a list of candidates.
@@ -268,7 +296,7 @@ func findKNearest(candidates []peer.ID, target kbucket.ID, k int) []peer.ID {
 	}
 
 	result := make([]peer.ID, k)
-	for i := 0; i < k; i++ {
+	for i := range k {
 		result[i] = distances[i].peer
 	}
 

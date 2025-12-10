@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -504,6 +505,83 @@ func (rt *RoutingTable) NearestPeers(id ID, count int) []peer.ID {
 	}
 
 	return out
+}
+
+// GetNormalizedPeers returns a list of k peers for the given CPL,
+// normalized according to the Peer2PIR Algorithm 1 Routing Table Normalization Algorithm
+func (rt *RoutingTable) GetNormalizedPeers(targetCpl uint) []peer.ID {
+	rt.tabLock.RLock()
+	defer rt.tabLock.RUnlock()
+
+	// DEBUG LOGGING
+	fmt.Printf("DEBUG: Normalizing CPL %d. Table Size: %d buckets\n", targetCpl, len(rt.buckets))
+
+	// 1. If the total number of peers is less than k, return all peers
+	if rt.Size() <= rt.bucketsize {
+		return rt.ListPeers()
+	}
+
+	// 2. Adjust target index if it exceeds table size
+	effectiveCpl := targetCpl
+	if int(effectiveCpl) >= len(rt.buckets) {
+		effectiveCpl = uint(len(rt.buckets) - 1)
+		fmt.Printf("DEBUG: CPL %d out of range. Clamping to last bucket %d\n", targetCpl, effectiveCpl)
+	}
+
+	// 3. Start with peers from the target bucket
+	R := rt.buckets[effectiveCpl].peerIds()
+
+	fmt.Printf("DEBUG: Primary Bucket %d has %d peers\n", effectiveCpl, len(R))
+
+	// 4. If bucket is full, return it
+	if len(R) >= rt.bucketsize {
+		fmt.Println("DEBUG: Bucket is full. Returning immediately.")
+		return R
+	}
+
+	fmt.Printf("DEBUG: Bucket %d sparse (%d/%d). Filling from neighbors...\n", effectiveCpl, len(R), rt.bucketsize)
+
+	// 5. Fill from closer buckets (t+1 ... r)
+	var closerPeers []peer.ID
+	for i := int(effectiveCpl) + 1; i < len(rt.buckets); i++ {
+		closerPeers = append(closerPeers, rt.buckets[i].peerIds()...)
+	}
+
+	// Shuffle to ensure random selection
+	rand.Shuffle(len(closerPeers), func(i, j int) {
+		closerPeers[i], closerPeers[j] = closerPeers[j], closerPeers[i]
+	})
+
+	needed := rt.bucketsize - len(R)
+	if len(closerPeers) <= needed {
+		R = append(R, closerPeers...)
+	} else {
+		R = append(R, closerPeers[:needed]...)
+	}
+
+	if len(R) >= rt.bucketsize {
+		return R
+	}
+
+	// 6. Fill from farther buckets (t-1 ... 0)
+	for i := int(effectiveCpl) - 1; i >= 0; i-- {
+		if len(R) >= rt.bucketsize {
+			break
+		}
+
+		peersInBucket := rt.buckets[i].peerIds()
+		// Sort by distance to local peer (server)
+		sorted := SortClosestPeers(peersInBucket, rt.local)
+
+		needed = rt.bucketsize - len(R)
+		if len(sorted) <= needed {
+			R = append(R, sorted...)
+		} else {
+			R = append(R, sorted[:needed]...)
+		}
+	}
+
+	return R
 }
 
 // Size returns the total number of peers in the routing table
