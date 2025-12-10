@@ -43,7 +43,7 @@ func TestPackedDebug(t *testing.T) {
 
 	fmt.Printf("Added peer to CPL 2: %s\n", peerCPL2)
 	fmt.Printf("Routing table has %d buckets\n", len(rt.buckets))
-	
+
 	rt.tabLock.RLock()
 	for i, b := range rt.buckets {
 		fmt.Printf("Bucket %d: %d peers\n", i, b.len())
@@ -56,12 +56,12 @@ func TestPackedDebug(t *testing.T) {
 	defer queryCt.Close()
 
 	// Decrypt the query to see what we sent
-	pt, err := ctx.cc.Decrypt(ctx.kp, queryCt)
+	pt, err := ctx.CC.Decrypt(ctx.KP, queryCt)
 	require.NoError(t, err)
 	querySlots, err := pt.GetPackedValue()
 	pt.Close()
 	require.NoError(t, err)
-	
+
 	fmt.Printf("Query slots (first 10): %v\n", querySlots[:10])
 
 	// Run PIR

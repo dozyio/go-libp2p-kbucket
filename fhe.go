@@ -4,7 +4,7 @@ package kbucket
 
 import (
 	"errors"
-	"fmt" // Import fmt for error formatting
+	"fmt"
 
 	"github.com/dozyio/openfhe-go/openfhe"
 )
@@ -20,10 +20,10 @@ const MaxCPL = 24
 var ErrFHENotEnabled = errors.New("FHE is not enabled for this routing table")
 
 type FHEContext struct {
-	cc      *openfhe.CryptoContext
-	kp      *openfhe.KeyPair
+	CC      *openfhe.CryptoContext
+	KP      *openfhe.KeyPair
 	params  *openfhe.ParamsBGV
-	ringDim int // <-- ADD THIS FIELD
+	ringDim int
 }
 
 // NewFHEContext initializes BGV context for integer packing.
@@ -49,19 +49,19 @@ func NewFHEContext() (*FHEContext, error) {
 
 	ringDim := cc.GetRingDimension()
 
-	return &FHEContext{cc: cc, params: params, ringDim: int(ringDim)}, nil
+	return &FHEContext{CC: cc, params: params, ringDim: int(ringDim)}, nil
 }
 
 // GenerateKeys generates the client's keypair and server's evaluation key.
 func (ctx *FHEContext) GenerateKeys() error {
-	kp, err := ctx.cc.KeyGen()
+	kp, err := ctx.CC.KeyGen()
 	if err != nil {
 		return err
 	}
-	ctx.kp = kp
+	ctx.KP = kp
 
 	// Generate MultKey (Evaluation Key) for the server to perform multiplication
-	ctx.cc.EvalMultKeyGen(kp)
+	ctx.CC.EvalMultKeyGen(kp)
 
 	return nil
 }
@@ -69,14 +69,14 @@ func (ctx *FHEContext) GenerateKeys() error {
 // GenerateKeysWithRotation generates keys including rotation keys for packed PIR.
 // This is required for the optimized single-ciphertext packed PIR approach.
 func (ctx *FHEContext) GenerateKeysWithRotation() error {
-	kp, err := ctx.cc.KeyGen()
+	kp, err := ctx.CC.KeyGen()
 	if err != nil {
 		return err
 	}
-	ctx.kp = kp
+	ctx.KP = kp
 
 	// Generate MultKey (Evaluation Key) for the server to perform multiplication
-	ctx.cc.EvalMultKeyGen(kp)
+	ctx.CC.EvalMultKeyGen(kp)
 
 	// Generate rotation keys for packed PIR:
 	// - Positive rotations (i) for extracting slots (rotate LEFT to move slot[i] to slot[0])
@@ -94,7 +94,7 @@ func (ctx *FHEContext) GenerateKeysWithRotation() error {
 		indexList = append(indexList, -shift)
 	}
 
-	err = ctx.cc.EvalRotateKeyGen(kp, indexList)
+	err = ctx.CC.EvalRotateKeyGen(kp, indexList)
 	if err != nil {
 		return fmt.Errorf("failed to generate rotation keys: %w", err)
 	}
@@ -129,13 +129,13 @@ func (ctx *FHEContext) CreateQueryVector(cpl int) ([]*openfhe.Ciphertext, error)
 	}
 
 	// Pre-create the two plaintexts we need
-	ptZero, err := ctx.cc.MakePackedPlaintext(fullZeroVector)
+	ptZero, err := ctx.CC.MakePackedPlaintext(fullZeroVector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make zero plaintext: %w", err)
 	}
 	defer ptZero.Close()
 
-	ptOne, err := ctx.cc.MakePackedPlaintext(fullOneVector)
+	ptOne, err := ctx.CC.MakePackedPlaintext(fullOneVector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make one plaintext: %w", err)
 	}
@@ -149,7 +149,7 @@ func (ctx *FHEContext) CreateQueryVector(cpl int) ([]*openfhe.Ciphertext, error)
 			ptToEncrypt = ptZero
 		}
 
-		ct, err := ctx.cc.Encrypt(ctx.kp, ptToEncrypt)
+		ct, err := ctx.CC.Encrypt(ctx.KP, ptToEncrypt)
 		if err != nil {
 			return nil, err
 		}
@@ -160,7 +160,7 @@ func (ctx *FHEContext) CreateQueryVector(cpl int) ([]*openfhe.Ciphertext, error)
 
 // DecryptConnectablePeers decrypts the PIR response.
 func (ctx *FHEContext) DecryptConnectablePeers(ct *openfhe.Ciphertext) ([]ConnectablePeer, error) {
-	pt, err := ctx.cc.Decrypt(ctx.kp, ct)
+	pt, err := ctx.CC.Decrypt(ctx.KP, ct)
 	if err != nil {
 		return nil, err
 	}
@@ -192,14 +192,14 @@ func (ctx *FHEContext) CreateQueryVectorPacked(cpl int) (*openfhe.Ciphertext, er
 	oneHotVector[cpl] = 1 // Only the CPL slot is 1, rest are 0
 
 	// Pack into plaintext
-	pt, err := ctx.cc.MakePackedPlaintext(oneHotVector)
+	pt, err := ctx.CC.MakePackedPlaintext(oneHotVector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make packed plaintext: %w", err)
 	}
 	defer pt.Close()
 
 	// Single encryption
-	ct, err := ctx.cc.Encrypt(ctx.kp, pt)
+	ct, err := ctx.CC.Encrypt(ctx.KP, pt)
 	if err != nil {
 		return nil, err
 	}
@@ -222,13 +222,13 @@ func (ctx *FHEContext) CreateQueryVectorGreedy(targetCPL int) (*openfhe.Cipherte
 	vec := make([]int64, ctx.ringDim)
 	vec[targetCPL] = 1
 
-	pt, err := ctx.cc.MakePackedPlaintext(vec)
+	pt, err := ctx.CC.MakePackedPlaintext(vec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make plaintext: %w", err)
 	}
 	defer pt.Close()
 
-	return ctx.cc.Encrypt(ctx.kp, pt)
+	return ctx.CC.Encrypt(ctx.KP, pt)
 }
 
 // DecryptGreedyAdaptiveResponse handles multi-ring responses from GetBucketPIRGreedyAdaptive.
@@ -237,7 +237,7 @@ func (ctx *FHEContext) DecryptGreedyAdaptiveResponse(responses []*openfhe.Cipher
 	var allPackedInts []int64
 
 	for _, ct := range responses {
-		pt, err := ctx.cc.Decrypt(ctx.kp, ct)
+		pt, err := ctx.CC.Decrypt(ctx.KP, ct)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt response: %w", err)
 		}

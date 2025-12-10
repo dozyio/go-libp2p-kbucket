@@ -33,7 +33,7 @@ func (rt *RoutingTable) GetBucketPIRPaged(queryVector []*openfhe.Ciphertext, ps 
 	if rt.fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
-	cc := rt.fheCtx.cc
+	cc := rt.fheCtx.CC
 	ringDim := rt.fheCtx.ringDim
 
 	if ringDim < BucketStride {
@@ -177,13 +177,13 @@ func (ctx *FHEContext) CreateQueryVectorPaged(cpl int) ([]*openfhe.Ciphertext, e
 		fullOne[i] = 1
 	}
 
-	ptZero, err := ctx.cc.MakePackedPlaintext(fullZero)
+	ptZero, err := ctx.CC.MakePackedPlaintext(fullZero)
 	if err != nil {
 		return nil, err
 	}
 	defer ptZero.Close()
 
-	ptOne, err := ctx.cc.MakePackedPlaintext(fullOne)
+	ptOne, err := ctx.CC.MakePackedPlaintext(fullOne)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (ctx *FHEContext) CreateQueryVectorPaged(cpl int) ([]*openfhe.Ciphertext, e
 			pt = ptZero
 		}
 
-		ct, err := ctx.cc.Encrypt(ctx.kp, pt)
+		ct, err := ctx.CC.Encrypt(ctx.KP, pt)
 		if err != nil {
 			// Clean up already created ciphertexts
 			for j := 0; j < i; j++ {
@@ -215,7 +215,7 @@ func (ctx *FHEContext) CreateQueryVectorPaged(cpl int) ([]*openfhe.Ciphertext, e
 // DecryptConnectablePeersPaged decrypts the response from Paged PIR.
 // It extracts the specific slot range corresponding to the requested CPL.
 func (ctx *FHEContext) DecryptConnectablePeersPaged(ct *openfhe.Ciphertext, targetCPL int) ([]ConnectablePeer, error) {
-	pt, err := ctx.cc.Decrypt(ctx.kp, ct)
+	pt, err := ctx.CC.Decrypt(ctx.KP, ct)
 	if err != nil {
 		return nil, err
 	}

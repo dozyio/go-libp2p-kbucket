@@ -20,7 +20,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, 
 		return nil, ErrFHENotEnabled
 	}
 
-	cc := rt.fheCtx.cc
+	cc := rt.fheCtx.CC
 	ringDim := rt.fheCtx.ringDim
 	bytesPerRing := ringDim * 2 // Dense packing (2 bytes/slot)
 
@@ -174,7 +174,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 		return nil, ErrFHENotEnabled
 	}
 
-	cc := rt.fheCtx.cc
+	cc := rt.fheCtx.CC
 	ringDim := rt.fheCtx.ringDim
 	bytesPerRing := ringDim * 2 // Dense packing (2 bytes/slot)
 

@@ -36,7 +36,7 @@ func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peers
 		return nil, fmt.Errorf("invalid query vector size: got %d, want %d", len(queryVector), MaxCPL)
 	}
 
-	cc := rt.fheCtx.cc
+	cc := rt.fheCtx.CC
 
 	// 1. Initialize Accumulator with Encrypted Zero
 	zeroPt, err := cc.MakePackedPlaintext([]int64{0})
@@ -172,7 +172,7 @@ func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext, ps peers
 		return nil, errors.New("peerstore cannot be nil for PIR query")
 	}
 
-	cc := rt.fheCtx.cc
+	cc := rt.fheCtx.CC
 
 	// Initialize accumulator
 	zeroPt, err := cc.MakePackedPlaintext([]int64{0})

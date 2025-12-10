@@ -171,9 +171,9 @@ func TestGreedyAdaptiveSecurity(t *testing.T) {
 	maliciousVec[0] = 1 // Query bucket 0
 	maliciousVec[1] = 1 // AND bucket 1 (malicious!)
 
-	pt, err := ctx.cc.MakePackedPlaintext(maliciousVec)
+	pt, err := ctx.CC.MakePackedPlaintext(maliciousVec)
 	require.NoError(t, err)
-	maliciousQuery, err := ctx.cc.Encrypt(ctx.kp, pt)
+	maliciousQuery, err := ctx.CC.Encrypt(ctx.KP, pt)
 	pt.Close()
 	require.NoError(t, err)
 	defer maliciousQuery.Close()
@@ -190,7 +190,6 @@ func TestGreedyAdaptiveSecurity(t *testing.T) {
 	// 6. Client tries to decrypt
 	// The greedy proof should cause the data to be corrupted
 	connectablePeers, err := ctx.DecryptGreedyAdaptiveResponse(responses)
-
 	// We expect either:
 	// a) An error during deserialization (corrupted JSON)
 	// b) An empty peer list

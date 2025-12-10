@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/dozyio/openfhe-go/openfhe"
 	kbucket "github.com/libp2p/go-libp2p-kbucket"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
@@ -54,6 +55,21 @@ func main() {
 	}
 	fmt.Println("   ✓ FHE context created with STD128 security")
 	fmt.Println("   ✓ Rotation keys generated for Greedy Adaptive PIR")
+
+	ccBytes, _ := openfhe.SerializeCryptoContextToBytes(fheCtx.CC)
+	fmt.Printf("Context (Params):     %s\n", formatSize(len(ccBytes)))
+
+	pkBytes, _ := openfhe.SerializePublicKeyToBytes(fheCtx.KP)
+	fmt.Printf("Public Key:           %s\n", formatSize(len(pkBytes)))
+
+	skBytes, _ := openfhe.SerializePrivateKeyToBytes(fheCtx.KP)
+	fmt.Printf("Private Key:          %s\n", formatSize(len(skBytes)))
+
+	multBytes, _ := openfhe.SerializeEvalMultKeyToBytes(fheCtx.CC, "")
+	fmt.Printf("Relinearization Key:  %s\n", formatSize(len(multBytes)))
+
+	rotBytes, _ := openfhe.SerializeEvalAutomorphismKeyToBytes(fheCtx.CC, "")
+	fmt.Printf("Rotation Keys (Total):%s\n", formatSize(len(rotBytes)))
 
 	// Step 2: Create server's routing table
 	fmt.Println("\n2. Creating server routing table...")
@@ -311,4 +327,17 @@ func distLess(a, b kbucket.ID) bool {
 		}
 	}
 	return len(a) < len(b)
+}
+
+func formatSize(bytes int) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }

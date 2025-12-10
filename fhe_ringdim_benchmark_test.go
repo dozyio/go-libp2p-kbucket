@@ -432,8 +432,8 @@ func benchmarkEndToEnd24CTSingle(b *testing.B, multDepth uint32) {
 
 	// Enable FHE (convert custom context to regular context)
 	fheCtx := &FHEContext{
-		cc:      ctx.cc,
-		kp:      ctx.kp,
+		CC:      ctx.cc,
+		KP:      ctx.kp,
 		params:  ctx.params,
 		ringDim: ctx.ringDim,
 	}
@@ -545,8 +545,8 @@ func benchmarkEndToEndPagedSingle(b *testing.B, multDepth uint32) {
 
 	// Enable FHE
 	fheCtx := &FHEContext{
-		cc:      ctx.cc,
-		kp:      ctx.kp,
+		CC:      ctx.cc,
+		KP:      ctx.kp,
 		params:  ctx.params,
 		ringDim: ctx.ringDim,
 	}
