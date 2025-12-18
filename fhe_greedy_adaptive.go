@@ -169,7 +169,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, 
 // Capacity: Adapts to large buckets. If a bucket fits in 1 ring (normal), returns 1 CT.
 //
 //	If a bucket is huge (>32KB), returns 2+ CTs.
-func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore) ([]*openfhe.Ciphertext, error) {
+func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore, kp *openfhe.KeyPair) ([]*openfhe.Ciphertext, error) {
 	if rt.fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
@@ -249,6 +249,23 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 		acc, _ := cc.EvalMultPlain(queryCt, zeroPt) // Encrypted Zero with noise
 		zeroPt.Close()
 
+		// NEW: Calculate how many slots we actually need to cover
+		// Each slot holds 2 bytes (dense packing)
+		neededSlots := (maxBytes + 1) / 2
+		if neededSlots < 1 {
+			neededSlots = 1
+		}
+
+		// Round up to next power of 2 for the doubling algorithm
+		replicationLimit := 1
+		for replicationLimit < neededSlots {
+			replicationLimit *= 2
+		}
+		// Cap at RingDim
+		if replicationLimit > ringDim {
+			replicationLimit = ringDim
+		}
+
 		// Summation Loop (The Greedy Proof)
 		for i, packedData := range serializedBuckets {
 			// Calculate which slice of this bucket belongs in Ring 'r'
@@ -286,28 +303,36 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 			// naive key rotations
 			// rotatedQuery, err := cc.EvalRotate(queryCt, int32(i))
 			// power-of-two rotations
-			rotatedQuery, err := rt.fheCtx.RotateComposite(queryCt, i)
+			// rotatedQuery, err := rt.fheCtx.RotateComposite(queryCt, i)
 			// single unit rotations
 			// rotatedQuery, err := rt.fheCtx.RotateIterative(queryCt, i)
+			// sparse rotation
+			rotatedQuery, err := rt.fheCtx.RotateSparse(queryCt, i)
 			if err != nil {
 				pt.Close()
 				continue
 			}
+			rt.DebugProbe(fmt.Sprintf("Step B (Extract CPL %d)", i), rotatedQuery, kp)
 
 			// C. Replicate Selector to cover this chunk
 			// We need a mask of [1,1,1...] matching ringDim
 
 			// standard extract
-			selector, err := rt.extractAndReplicateBit(cc, rotatedQuery, ringDim)
+			// selector, err := rt.extractAndReplicateBit(cc, rotatedQuery, ringDim)
 
 			// single unit extract
 			// selector, err := rt.extractAndReplicateBitIterative(cc, rotatedQuery, ringDim)
+
+			// You need a specific helper for replication too, using RotateSparse internally
+			// selector, err := rt.extractAndReplicateBitSparse(cc, rotatedQuery, ringDim)
+			selector, err := rt.extractAndReplicateBitSparse(cc, rotatedQuery, replicationLimit)
 
 			rotatedQuery.Close()
 			if err != nil {
 				pt.Close()
 				continue
 			}
+			rt.DebugProbe(fmt.Sprintf("Step C (Replicate CPL %d)", i), selector, kp)
 
 			// D. Multiply: Selector * Chunk
 			maskedChunk, err := cc.EvalMultPlain(selector, pt)
@@ -316,6 +341,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 			if err != nil {
 				continue
 			}
+			rt.DebugProbe(fmt.Sprintf("Step D (Mult CPL %d)", i), maskedChunk, kp)
 
 			// E. Add to Accumulator
 			nextAcc, err := cc.EvalAdd(acc, maskedChunk)
@@ -323,6 +349,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 			if err != nil {
 				continue
 			}
+			rt.DebugProbe(fmt.Sprintf("Step E (Acc CPL %d)", i), acc, kp)
 
 			acc.Close()
 			acc = nextAcc
@@ -419,4 +446,197 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 	}
 
 	return current, nil
+}
+
+// extractAndReplicateBitSparse performs the "smearing" operation to copy the bit at index 0
+// to all other slots, using only the sparse key set {1, 5, -1, -5}.
+//
+//	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, count int) (*openfhe.Ciphertext, error) {
+//		// 1. Mask to isolate the single bit at index 0
+//		// Transformation: [b, ?, ?...] -> [b, 0, 0...]
+//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask[0] = 1
+//		maskPt, _ := cc.MakePackedPlaintext(mask)
+//
+//		current, err := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
+//		maskPt.Close() // Clean up plaintext
+//		if err != nil {
+//			return nil, err
+//		}
+//
+//		// 2. Replicate using the "Doubling" algorithm
+//		// We iteratively expand the mask: 1->2, 2->4, 4->8...
+//		// We use RotateSparse because we lack dedicated keys for shifts like -2, -4, -8.
+//		for size := 1; size < count; size *= 2 {
+//			// Calculate the rotation: we need to shift RIGHT by 'size'.
+//			// RotateSparse will break this large shift down into steps of -5 and -1.
+//			rotated, err := rt.fheCtx.RotateSparse(current, -size)
+//			if err != nil {
+//				// If rotation fails, clean up the accumulator
+//				if size > 1 {
+//					current.Close()
+//				}
+//				return nil, err
+//			}
+//
+//			// Sum the current mask with its shifted copy
+//			// [b, b, 0...] + [0, 0, b, b...] -> [b, b, b, b...]
+//			summed, err := cc.EvalAdd(current, rotated)
+//
+//			// Clean up the temporary rotated ciphertext
+//			rotated.Close()
+//
+//			if err != nil {
+//				if size > 1 {
+//					current.Close()
+//				}
+//				return nil, err
+//			}
+//
+//			// Update 'current' to the new doubled mask
+//			if size > 1 {
+//				current.Close() // Free the old 'current' (unless it was the first loop's input)
+//			}
+//			current = summed
+//		}
+//
+//		return current, nil
+//	}
+//
+//	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
+//		// 1. Mask (Same as before)
+//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask[0] = 1
+//		maskPt, _ := cc.MakePackedPlaintext(mask)
+//		current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
+//		maskPt.Close()
+//
+//		// 2. Replicate ONLY up to 'limit'
+//		for size := 1; size < limit; size *= 2 {
+//			// Use RotateSparse to handle the shift (using -1 and -64 keys)
+//			rotated, err := rt.fheCtx.RotateSparse(current, -size)
+//			if err != nil {
+//				return nil, err
+//			}
+//
+//			summed, err := cc.EvalAdd(current, rotated)
+//			rotated.Close()
+//
+//			if size > 1 {
+//				current.Close()
+//			}
+//			current = summed
+//
+//			if err != nil {
+//				return nil, err
+//			}
+//		}
+//		return current, nil
+//	}
+//
+//	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
+//		// 1. Mask
+//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask[0] = 1
+//		maskPt, _ := cc.MakePackedPlaintext(mask)
+//		current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
+//		maskPt.Close()
+//
+//		// 2. Replicate
+//		// Since we have keys for -1, -2, -4... we can just do 1 hop per loop!
+//		for size := 1; size < limit; size *= 2 {
+//			rotated, err := cc.EvalRotate(current, int32(-size)) // Direct call possible now!
+//			if err != nil {
+//				return nil, err
+//			}
+//
+//			summed, err := cc.EvalAdd(current, rotated)
+//			rotated.Close()
+//			if size > 1 {
+//				current.Close()
+//			}
+//			current = summed
+//		}
+//		return current, nil
+//	}
+//
+//	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
+//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask[0] = 1
+//		maskPt, _ := cc.MakePackedPlaintext(mask)
+//		current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
+//		maskPt.Close()
+//
+//		for size := 1; size < limit; size *= 2 {
+//			// Direct Rotation (1 Hop)
+//			rotated, err := cc.EvalRotate(current, int32(-size))
+//			if err != nil {
+//				return nil, err
+//			}
+//
+//			summed, err := cc.EvalAdd(current, rotated)
+//			if err != nil {
+//				rotated.Close()
+//				return nil, err
+//			}
+//
+//			rotated.Close()
+//			if size > 1 {
+//				current.Close()
+//			}
+//			current = summed
+//		}
+//		return current, nil
+//	}
+func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
+	// 1. Mask
+	mask := make([]int64, rt.fheCtx.ringDim)
+	mask[0] = 1
+	maskPt, _ := cc.MakePackedPlaintext(mask)
+	current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
+	maskPt.Close()
+
+	// 2. Replicate (Doubling)
+	// RotateSparse handles the shifts (e.g., -512 is 1 hop, -1024 is 2 hops)
+	for size := 1; size < limit; size *= 2 {
+		rotated, err := rt.fheCtx.RotateSparse(current, -size)
+		if err != nil {
+			if size > 1 {
+				current.Close()
+			}
+			return nil, err
+		}
+
+		summed, err := cc.EvalAdd(current, rotated)
+		rotated.Close()
+
+		if size > 1 {
+			current.Close()
+		}
+		current = summed
+		if err != nil {
+			return nil, err
+		}
+	}
+	return current, nil
+}
+
+func (rt *RoutingTable) DebugProbe(name string, ct *openfhe.Ciphertext, kp *openfhe.KeyPair) {
+	if kp == nil {
+		return
+	} // Skip if not provided
+
+	// Decrypt
+	pt, err := rt.fheCtx.CC.Decrypt(kp, ct)
+	if err != nil {
+		fmt.Printf("❌ [DEBUG] %s: DECRYPTION FAILED (Noise > Budget)\n", name)
+		return
+	}
+
+	// Unpack and print first 8 slots
+	vals, _ := pt.GetPackedValue()
+	if len(vals) > 8 {
+		vals = vals[:8]
+	}
+	fmt.Printf("✅ [DEBUG] %s: %v ...\n", name, vals)
 }

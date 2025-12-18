@@ -52,9 +52,11 @@ func main() {
 	// naive key rotations
 	// err = fheCtx.GenerateKeysWithRotation()
 	// use power-of-two keys
-	err = fheCtx.GenerateKeysPowerOfTwo()
+	// err = fheCtx.GenerateKeysPowerOfTwo()
 	// single unit keys
 	// err = fheCtx.GenerateKeysMinimal()
+	// sparse keys
+	err = fheCtx.GenerateKeysSparse()
 	if err != nil {
 		log.Fatalf("Failed to generate FHE keys: %v", err)
 	}
@@ -146,7 +148,7 @@ func main() {
 
 	fmt.Printf("   ✓ Added %d peers to routing table\n", rt.Size())
 	fmt.Printf("   ✓ Routing table will auto-expand as needed (bucket splitting)\n")
-	rt.Print()
+	// rt.Print()
 
 	// Step 4: Client creates a target ID (what they're searching for)
 	fmt.Println("\n4. Client selects target peer to search for...")
@@ -187,7 +189,7 @@ func main() {
 	// Server processes the encrypted query
 	fmt.Println("   b) Server processes encrypted query...")
 	queryStart := time.Now()
-	responseCts, err := rt.GetBucketPIRGreedyAdaptiveNormalized(queryCt, ps)
+	responseCts, err := rt.GetBucketPIRGreedyAdaptiveNormalized(queryCt, ps, fheCtx.KP)
 	if err != nil {
 		log.Fatalf("Failed to get bucket: %v", err)
 	}
