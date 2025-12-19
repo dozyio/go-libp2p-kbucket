@@ -8,7 +8,6 @@ import (
 	"math"
 
 	"github.com/dozyio/openfhe-go/openfhe"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 // ============================================================================
@@ -41,7 +40,7 @@ type PIRStrategy interface {
 	CreateQuery(cpl int) (PIRQuery, error)
 
 	// ExecutePIR performs the PIR operation on the routing table
-	ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error)
+	ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error)
 
 	// DecryptResponse decrypts the PIR response
 	DecryptResponse(response PIRResponse) ([]ConnectablePeer, error)
@@ -154,14 +153,14 @@ func (s *StandardPIRStrategy) CreateQuery(cpl int) (PIRQuery, error) {
 	return &multiCTQuery{cts: cts}, nil
 }
 
-func (s *StandardPIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error) {
+func (s *StandardPIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error) {
 	mq, ok := query.(*multiCTQuery)
 	if !ok {
 		return nil, errors.New("invalid query type for Standard PIR")
 	}
 
 	// Call existing GetBucketPIR implementation
-	ct, err := rt.GetBucketPIR(mq.cts, ps)
+	ct, err := rt.GetBucketPIR(mq.cts)
 	if err != nil {
 		return nil, err
 	}
@@ -218,14 +217,14 @@ func (s *PagedPIRStrategy) CreateQuery(cpl int) (PIRQuery, error) {
 	return &multiCTQuery{cts: cts}, nil
 }
 
-func (s *PagedPIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error) {
+func (s *PagedPIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error) {
 	mq, ok := query.(*multiCTQuery)
 	if !ok {
 		return nil, errors.New("invalid query type for Paged PIR")
 	}
 
 	// Call existing GetBucketPIRPaged implementation
-	ct, err := rt.GetBucketPIRPaged(mq.cts, ps)
+	ct, err := rt.GetBucketPIRPaged(mq.cts)
 	if err != nil {
 		return nil, err
 	}
@@ -292,14 +291,14 @@ func (s *PackedPIRStrategy) CreateQuery(cpl int) (PIRQuery, error) {
 	return &singleCTQuery{ct: ct}, nil
 }
 
-func (s *PackedPIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error) {
+func (s *PackedPIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error) {
 	sq, ok := query.(*singleCTQuery)
 	if !ok {
 		return nil, errors.New("invalid query type for Packed PIR")
 	}
 
 	// Call existing GetBucketPIRPacked implementation
-	ct, err := rt.GetBucketPIRPacked(sq.ct, ps)
+	ct, err := rt.GetBucketPIRPacked(sq.ct)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +361,7 @@ func (s *GreedyAdaptivePIRStrategy) CreateQuery(cpl int) (PIRQuery, error) {
 	return &singleCTQuery{ct: ct}, nil
 }
 
-func (s *GreedyAdaptivePIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error) {
+func (s *GreedyAdaptivePIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error) {
 	sq, ok := query.(*singleCTQuery)
 	if !ok {
 		return nil, errors.New("invalid query type for Greedy Adaptive PIR")
@@ -373,10 +372,10 @@ func (s *GreedyAdaptivePIRStrategy) ExecutePIR(query PIRQuery, rt *RoutingTable,
 
 	if s.normalized {
 		// Call normalized variant
-		cts, err = rt.GetBucketPIRGreedyAdaptiveNormalized(sq.ct, ps, s.fheCtx.KP)
+		cts, err = rt.GetBucketPIRGreedyAdaptiveNormalized(sq.ct, s.fheCtx.KP)
 	} else {
 		// Call standard greedy adaptive
-		cts, err = rt.GetBucketPIRGreedyAdaptive(sq.ct, ps)
+		cts, err = rt.GetBucketPIRGreedyAdaptive(sq.ct)
 	}
 
 	if err != nil {

@@ -3,6 +3,7 @@
 package kbucket
 
 import (
+	ma "github.com/multiformats/go-multiaddr"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func TestBandwidthComparison(t *testing.T) {
 		p := test.RandPeerIDFatal(t)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -57,7 +58,7 @@ func TestBandwidthComparison(t *testing.T) {
 		queryVec, err := ctx.CreateQueryVectorGreedy(targetCPL)
 		require.NoError(t, err)
 
-		responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+		responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec)
 		require.NoError(t, err)
 
 		peers, err := ctx.DecryptGreedyAdaptiveResponse(responses)
@@ -86,7 +87,7 @@ func TestBandwidthComparison(t *testing.T) {
 		queryVec, err := ctx.CreateQueryVector(targetCPL)
 		require.NoError(t, err)
 
-		response, err := rt.GetBucketPIRPaged(queryVec, ps)
+		response, err := rt.GetBucketPIRPaged(queryVec)
 		require.NoError(t, err)
 
 		peers, err := ctx.DecryptConnectablePeers(response)
@@ -160,7 +161,7 @@ func BenchmarkBandwidthDetailed(b *testing.B) {
 		p := test.RandPeerIDFatal(b)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -177,7 +178,7 @@ func BenchmarkBandwidthDetailed(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 
 			totalQueryKB += int64(1 * ctSizeKB)
 			totalResponseKB += int64(len(responses) * ctSizeKB)
@@ -203,7 +204,7 @@ func BenchmarkBandwidthDetailed(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			queryVec, _ := ctx.CreateQueryVector(targetCPL)
-			response, _ := rt.GetBucketPIRPaged(queryVec, ps)
+			response, _ := rt.GetBucketPIRPaged(queryVec)
 
 			totalQueryKB += int64(len(queryVec) * ctSizeKB)
 			totalResponseKB += int64(1 * ctSizeKB)

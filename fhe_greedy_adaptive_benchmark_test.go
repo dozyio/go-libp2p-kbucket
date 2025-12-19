@@ -3,6 +3,7 @@
 package kbucket
 
 import (
+	ma "github.com/multiformats/go-multiaddr"
 	"fmt"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func BenchmarkGreedyAdaptiveE2E(b *testing.B) {
 				p := test.RandPeerIDFatal(b)
 				addrs := generateLargeMultiaddrs(i)
 				ps.AddAddrs(p, addrs, time.Hour)
-				if added, _ := rt.TryAddPeer(p, true, false); added {
+				if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 					addedCount++
 				}
 			}
@@ -58,7 +59,7 @@ func BenchmarkGreedyAdaptiveE2E(b *testing.B) {
 				require.NoError(b, err)
 
 				// Server: Process query
-				responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+				responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec)
 				require.NoError(b, err)
 
 				// Client: Decrypt
@@ -99,7 +100,7 @@ func BenchmarkGreedyAdaptiveComponents(b *testing.B) {
 		p := test.RandPeerIDFatal(b)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -124,7 +125,7 @@ func BenchmarkGreedyAdaptiveComponents(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+			responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec)
 			require.NoError(b, err)
 			for _, ct := range responses {
 				ct.Close()
@@ -134,7 +135,7 @@ func BenchmarkGreedyAdaptiveComponents(b *testing.B) {
 
 	b.Run("Decryption", func(b *testing.B) {
 		queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-		responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+		responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 		queryVec.Close()
 
 		b.ReportAllocs()
@@ -186,7 +187,7 @@ func BenchmarkGreedyAdaptiveBandwidth(b *testing.B) {
 				p := test.RandPeerIDFatal(b)
 				addrs := generateLargeMultiaddrs(i)
 				ps.AddAddrs(p, addrs, time.Hour)
-				if added, _ := rt.TryAddPeer(p, true, false); added {
+				if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 					addedCount++
 				}
 			}
@@ -197,7 +198,7 @@ func BenchmarkGreedyAdaptiveBandwidth(b *testing.B) {
 
 			// Create query and response once to measure size
 			queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 
 			// Estimate sizes (in production, you'd serialize these)
 			// Each ciphertext is approximately 128KB based on ring dimension
@@ -242,7 +243,7 @@ func BenchmarkGreedyAdaptiveVsPaged(b *testing.B) {
 		p := test.RandPeerIDFatal(b)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -255,7 +256,7 @@ func BenchmarkGreedyAdaptiveVsPaged(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 			_, _ = ctx.DecryptGreedyAdaptiveResponse(responses)
 
 			queryVec.Close()
@@ -269,7 +270,7 @@ func BenchmarkGreedyAdaptiveVsPaged(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			queryVec, _ := ctx.CreateQueryVector(targetCPL)
-			response, _ := rt.GetBucketPIRPaged(queryVec, ps)
+			response, _ := rt.GetBucketPIRPaged(queryVec)
 			_, _ = ctx.DecryptConnectablePeers(response)
 			response.Close()
 			for _, ct := range queryVec {
@@ -307,7 +308,7 @@ func BenchmarkGreedyAdaptiveScalability(b *testing.B) {
 				p := test.RandPeerIDFatal(b)
 				addrs := generateLargeMultiaddrs(i)
 				ps.AddAddrs(p, addrs, time.Hour)
-				if added, _ := rt.TryAddPeer(p, true, false); added {
+				if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 					addedCount++
 				}
 			}
@@ -321,7 +322,7 @@ func BenchmarkGreedyAdaptiveScalability(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-				responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+				responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 				_, _ = ctx.DecryptGreedyAdaptiveResponse(responses)
 
 				queryVec.Close()

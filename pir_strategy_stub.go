@@ -4,8 +4,6 @@ package kbucket
 
 import (
 	"errors"
-
-	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 // PIRStrategyType stub
@@ -38,7 +36,7 @@ type PIRStrategy interface {
 	Type() PIRStrategyType
 	RequiresRotationKeys() bool
 	CreateQuery(cpl int) (PIRQuery, error)
-	ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error)
+	ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error)
 	DecryptResponse(response PIRResponse) ([]ConnectablePeer, error)
 	EstimateQuerySize() int
 	EstimateKeySize() int
@@ -81,7 +79,7 @@ func (s *pirStrategyStub) CreateQuery(cpl int) (PIRQuery, error) {
 	return nil, errors.New("PIR support not compiled in")
 }
 
-func (s *pirStrategyStub) ExecutePIR(query PIRQuery, rt *RoutingTable, ps peerstore.Peerstore) (PIRResponse, error) {
+func (s *pirStrategyStub) ExecutePIR(query PIRQuery, rt *RoutingTable) (PIRResponse, error) {
 	return nil, errors.New("PIR support not compiled in")
 }
 

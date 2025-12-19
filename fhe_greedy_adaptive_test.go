@@ -47,7 +47,7 @@ func TestGreedyAdaptiveBasic(t *testing.T) {
 			require.NoError(t, err)
 
 			ps.AddAddrs(p, []ma.Multiaddr{addr}, time.Hour)
-			added, _ := rt.TryAddPeer(p, true, false)
+			added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 			if added {
 				addedPeers[cpl] = append(addedPeers[cpl], p)
 			}
@@ -75,7 +75,7 @@ func TestGreedyAdaptiveBasic(t *testing.T) {
 
 			// Server processes query
 			start := time.Now()
-			responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+			responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec)
 			require.NoError(t, err)
 			defer func() {
 				for _, ct := range responses {
@@ -160,7 +160,7 @@ func TestGreedyAdaptiveSecurity(t *testing.T) {
 			require.NoError(t, err)
 
 			ps.AddAddrs(p, []ma.Multiaddr{addr}, time.Hour)
-			rt.TryAddPeer(p, true, false)
+			rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 		}
 	}
 
@@ -179,7 +179,7 @@ func TestGreedyAdaptiveSecurity(t *testing.T) {
 	defer maliciousQuery.Close()
 
 	// 5. Server processes the malicious query
-	responses, err := rt.GetBucketPIRGreedyAdaptive(maliciousQuery, ps)
+	responses, err := rt.GetBucketPIRGreedyAdaptive(maliciousQuery)
 	require.NoError(t, err)
 	defer func() {
 		for _, ct := range responses {
@@ -286,7 +286,7 @@ func TestGreedyAdaptiveEmptyBucket(t *testing.T) {
 	defer queryVec.Close()
 
 	// 5. Server processes query
-	responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+	responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec)
 	require.NoError(t, err)
 	defer func() {
 		for _, ct := range responses {

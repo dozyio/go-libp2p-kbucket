@@ -101,7 +101,7 @@ func setupBenchmarkNetwork(b *testing.B, peerCount int) *BenchmarkSetup {
 		addrs := generateLargeMultiaddrs(i)
 
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -188,7 +188,7 @@ func benchmarkFHEPIRQuery(b *testing.B, setup *BenchmarkSetup) {
 		}
 		rt.tabLock.RUnlock()
 
-		encryptedResponse, err := rt.GetBucketPIR(queryVec, ps)
+		encryptedResponse, err := rt.GetBucketPIR(queryVec)
 		pirComputeTime += time.Since(start)
 		require.NoError(b, err)
 
@@ -297,7 +297,7 @@ func BenchmarkTraditional_NetworkSize_100(b *testing.B) {
 
 	for i := 0; i < 100; i++ {
 		p := test.RandPeerIDFatal(b)
-		rt.TryAddPeer(p, true, false)
+		rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 	}
 
 	target := test.RandPeerIDFatal(b)
@@ -318,7 +318,7 @@ func BenchmarkTraditional_NetworkSize_1K(b *testing.B) {
 
 	for i := 0; i < 1000*2; i++ {
 		p := test.RandPeerIDFatal(b)
-		rt.TryAddPeer(p, true, false)
+		rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 	}
 
 	target := test.RandPeerIDFatal(b)
@@ -339,7 +339,7 @@ func BenchmarkTraditional_NetworkSize_10K(b *testing.B) {
 
 	for i := 0; i < 10000*2; i++ {
 		p := test.RandPeerIDFatal(b)
-		rt.TryAddPeer(p, true, false)
+		rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 	}
 
 	target := test.RandPeerIDFatal(b)
@@ -381,7 +381,7 @@ func TestBucketDistribution(t *testing.T) {
 			addrs := generateLargeMultiaddrs(i)
 
 			ps.AddAddrs(p, addrs, time.Hour)
-			if added, _ := rt.TryAddPeer(p, true, false); added {
+			if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 				addedCount++
 			}
 		}
@@ -438,7 +438,7 @@ func TestMemoryUsage(t *testing.T) {
 
 		for i := 0; i < size*2; i++ {
 			p := test.RandPeerIDFatal(t)
-			rt.TryAddPeer(p, true, false)
+			rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 		}
 
 		runtime.GC()
@@ -487,7 +487,7 @@ func setupBenchmarkNetworkPacked(b *testing.B, peerCount int) *BenchmarkSetup {
 		addrs := generateLargeMultiaddrs(i)
 
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -566,7 +566,7 @@ func benchmarkFHEPIRQueryPacked(b *testing.B, setup *BenchmarkSetup) {
 		}
 		rt.tabLock.RUnlock()
 
-		encryptedResponse, err := rt.GetBucketPIRPacked(queryCt, ps)
+		encryptedResponse, err := rt.GetBucketPIRPacked(queryCt)
 		pirComputeTime += time.Since(start)
 		require.NoError(b, err)
 
@@ -722,7 +722,7 @@ func benchmarkFHEPIRQueryPaged(b *testing.B, setup *BenchmarkSetup) {
 		}
 		rt.tabLock.RUnlock()
 
-		encryptedResponse, err := rt.GetBucketPIRPaged(queryVector, ps)
+		encryptedResponse, err := rt.GetBucketPIRPaged(queryVector)
 		pirComputeTime += time.Since(start)
 		require.NoError(b, err)
 

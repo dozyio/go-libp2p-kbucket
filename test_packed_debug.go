@@ -37,7 +37,7 @@ func TestPackedDebug(t *testing.T) {
 	require.NoError(t, err)
 	addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/10000")
 	ps.AddAddrs(peerCPL2, []ma.Multiaddr{addr}, time.Hour)
-	added, err := rt.TryAddPeer(peerCPL2, true, false)
+	added, err := rt.TryAddPeer(peerCPL2, []ma.Multiaddr{addr}, true, false)
 	require.NoError(t, err)
 	require.True(t, added)
 
@@ -65,7 +65,7 @@ func TestPackedDebug(t *testing.T) {
 	fmt.Printf("Query slots (first 10): %v\n", querySlots[:10])
 
 	// Run PIR
-	response, err := rt.GetBucketPIRPacked(queryCt, ps)
+	response, err := rt.GetBucketPIRPacked(queryCt)
 	require.NoError(t, err)
 	defer response.Close()
 

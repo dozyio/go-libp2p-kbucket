@@ -445,7 +445,7 @@ func benchmarkEndToEnd24CTSingle(b *testing.B, multDepth uint32) {
 		p := test.RandPeerIDFatal(b)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		rt.TryAddPeer(p, true, false)
+		rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 	}
 
 	target := test.RandPeerIDFatal(b)
@@ -480,7 +480,7 @@ func benchmarkEndToEnd24CTSingle(b *testing.B, multDepth uint32) {
 		}
 		rt.tabLock.RUnlock()
 
-		encResp, _ := rt.GetBucketPIR(queryVec, ps)
+		encResp, _ := rt.GetBucketPIR(queryVec)
 		pirTime += time.Since(pStart)
 
 		// Decryption
@@ -558,7 +558,7 @@ func benchmarkEndToEndPagedSingle(b *testing.B, multDepth uint32) {
 		p := test.RandPeerIDFatal(b)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		rt.TryAddPeer(p, true, false)
+		rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 	}
 
 	target := test.RandPeerIDFatal(b)
@@ -600,7 +600,7 @@ func benchmarkEndToEndPagedSingle(b *testing.B, multDepth uint32) {
 		}
 		rt.tabLock.RUnlock()
 
-		encResp, _ := rt.GetBucketPIRPaged(queryVec, ps)
+		encResp, _ := rt.GetBucketPIRPaged(queryVec)
 		pirTime += time.Since(pStart)
 
 		// Decryption

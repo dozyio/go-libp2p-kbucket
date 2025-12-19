@@ -3,11 +3,9 @@
 package kbucket
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/dozyio/openfhe-go/openfhe"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 // Deprecated: PIR is now configured at table creation time via NewRoutingTable.
@@ -55,14 +53,10 @@ func (rt *RoutingTable) IsFHEEnabled() bool {
 // GetBucketPIR performs the Private Information Retrieval lookup using 24 ciphertexts.
 // It takes the client's query vector and the node's peerstore.
 // It returns a single encrypted ciphertext containing the selected bucket's peers.
-func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peerstore.Peerstore) (*openfhe.Ciphertext, error) {
+func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext) (*openfhe.Ciphertext, error) {
 	fheCtx := rt.GetFHEContext()
 	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
-	}
-
-	if ps == nil {
-		return nil, errors.New("peerstore cannot be nil for PIR query")
 	}
 
 	if len(queryVector) != MaxCPL {
@@ -126,13 +120,12 @@ func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peers
 		internalPeers := bucket.peers()
 		connectablePeers := make([]ConnectablePeer, 0, len(internalPeers))
 		for _, pInfo := range internalPeers {
-			addrs := ps.Addrs(pInfo.Id)
-			if len(addrs) == 0 {
+			if len(pInfo.Addrs) == 0 {
 				continue
 			}
 			connectablePeers = append(connectablePeers, ConnectablePeer{
 				ID:    pInfo.Id,
-				Addrs: addrs,
+				Addrs: pInfo.Addrs,
 			})
 		}
 
@@ -199,14 +192,10 @@ func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peers
 // 2. Extract slot[0] and replicate its value to all slots (via rotation+addition)
 // 3. Multiply replicated selector by bucket data (all slots multiplied by same value)
 // 4. Accumulate into final result
-func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore) (*openfhe.Ciphertext, error) {
+func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext) (*openfhe.Ciphertext, error) {
 	fheCtx := rt.GetFHEContext()
 	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
-	}
-
-	if ps == nil {
-		return nil, errors.New("peerstore cannot be nil for PIR query")
 	}
 
 	cc := fheCtx.CC
@@ -236,13 +225,12 @@ func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext, ps peers
 		internalPeers := bucket.peers()
 		connectablePeers := make([]ConnectablePeer, 0, len(internalPeers))
 		for _, pInfo := range internalPeers {
-			addrs := ps.Addrs(pInfo.Id)
-			if len(addrs) == 0 {
+			if len(pInfo.Addrs) == 0 {
 				continue
 			}
 			connectablePeers = append(connectablePeers, ConnectablePeer{
 				ID:    pInfo.Id,
-				Addrs: addrs,
+				Addrs: pInfo.Addrs,
 			})
 		}
 

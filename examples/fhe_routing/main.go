@@ -50,7 +50,10 @@ func main() {
 	defer fheCtx.Close()
 
 	// Step 2: Choose PIR strategy
-	strategy := kbucket.PIRStrategyGreedyNormalized
+	// strategy := kbucket.PIRStrategyGreedyNormalized
+	// strategy := kbucket.PIRStrategyStandard
+	strategy := kbucket.PIRStrategyPaged
+	// strategy := kbucket.PIRStrategyPacked
 
 	// Step 3: Generate keys for chosen strategy
 	fmt.Printf("2. Generating keys for strategy: %s...\n", strategy)
@@ -136,7 +139,7 @@ func main() {
 			}
 			ps.AddAddrs(p, []ma.Multiaddr{addr}, time.Hour)
 
-			added, err := rt.TryAddPeer(p, true, true)
+			added, err := rt.TryAddPeer(p, []ma.Multiaddr{addr}, true, true)
 			if err != nil {
 				continue
 			}
@@ -173,7 +176,7 @@ func main() {
 	fmt.Println("\n7. FHE-based private lookup (using new GetBucket API)...")
 
 	queryStart := time.Now()
-	bucketPeers, err := rt.GetBucket(targetCPL, ps)
+	bucketPeers, err := rt.GetBucket(targetCPL)
 	if err != nil {
 		log.Fatalf("PIR query failed: %v", err)
 	}

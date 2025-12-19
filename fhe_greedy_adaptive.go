@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/dozyio/openfhe-go/openfhe"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 // Deprecated: Use GetBucket() with PIRStrategyGreedyAdaptive instead.
@@ -18,7 +17,7 @@ import (
 // Capacity: Adapts to large buckets. If a bucket fits in 1 ring (normal), returns 1 CT.
 //
 //	If a bucket is huge (>32KB), returns 2+ CTs.
-func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore) ([]*openfhe.Ciphertext, error) {
+func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext) ([]*openfhe.Ciphertext, error) {
 	fheCtx := rt.GetFHEContext()
 	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
@@ -48,10 +47,8 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, 
 
 		connectable := make([]ConnectablePeer, 0, len(peers))
 		for _, p := range peers {
-			addrs := ps.Addrs(p.Id)
-			// Optional: filter addrs here to keep size reasonable
-			if len(addrs) > 0 {
-				connectable = append(connectable, ConnectablePeer{p.Id, addrs})
+			if len(p.Addrs) > 0 {
+				connectable = append(connectable, ConnectablePeer{p.Id, p.Addrs})
 			}
 		}
 		if len(connectable) == 0 {
@@ -176,7 +173,7 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, 
 //
 // Deprecated: Use GetBucket() with PIRStrategyGreedyNormalized instead.
 // This method will be removed in v2.0.
-func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore, kp *openfhe.KeyPair) ([]*openfhe.Ciphertext, error) {
+func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ciphertext, kp *openfhe.KeyPair) ([]*openfhe.Ciphertext, error) {
 	fheCtx := rt.GetFHEContext()
 	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
@@ -212,12 +209,13 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 
 		connectable := make([]ConnectablePeer, 0, len(peers))
 		for _, pid := range peers {
-			// Resolve Addrs from PeerStore
-			addrs := ps.Addrs(pid)
+			// Look up peer info to get addresses
+			bucketID := rt.bucketIdForPeer(pid)
+			bucket := rt.buckets[bucketID]
+			peerInfo := bucket.getPeer(pid)
 
-			// Optional: filter addrs here to keep size reasonable
-			if len(addrs) > 0 {
-				connectable = append(connectable, ConnectablePeer{pid, addrs})
+			if peerInfo != nil && len(peerInfo.Addrs) > 0 {
+				connectable = append(connectable, ConnectablePeer{pid, peerInfo.Addrs})
 			}
 		}
 

@@ -8,7 +8,6 @@ import (
 	"math"
 
 	"github.com/dozyio/openfhe-go/openfhe"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 // DefaultBucketStride defines the default stride for Paged PIR when not specified in PIRConfig.
@@ -38,7 +37,7 @@ const BucketStride = DefaultBucketStride
 //
 // Deprecated: Use GetBucket() with PIRStrategyPaged instead.
 // This method will be removed in v2.0.
-func (rt *RoutingTable) GetBucketPIRPaged(queryVector []*openfhe.Ciphertext, ps peerstore.Peerstore) (*openfhe.Ciphertext, error) {
+func (rt *RoutingTable) GetBucketPIRPaged(queryVector []*openfhe.Ciphertext) (*openfhe.Ciphertext, error) {
 	fheCtx := rt.GetFHEContext()
 	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
@@ -97,9 +96,8 @@ func (rt *RoutingTable) GetBucketPIRPaged(queryVector []*openfhe.Ciphertext, ps 
 			// Retrieve and serialize peers
 			connectablePeers := make([]ConnectablePeer, 0, bucket.len())
 			for _, pInfo := range bucket.peers() {
-				addrs := ps.Addrs(pInfo.Id)
-				if len(addrs) > 0 {
-					connectablePeers = append(connectablePeers, ConnectablePeer{ID: pInfo.Id, Addrs: addrs})
+				if len(pInfo.Addrs) > 0 {
+					connectablePeers = append(connectablePeers, ConnectablePeer{ID: pInfo.Id, Addrs: pInfo.Addrs})
 				}
 			}
 

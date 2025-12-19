@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
 	pstore "github.com/libp2p/go-libp2p/p2p/host/peerstore"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // TestFindOptimalMaxCPL simulates routing table depth for different network sizes.
@@ -106,7 +107,7 @@ func TestFindOptimalMaxCPL(t *testing.T) {
 					if j == obsIdx {
 						continue // Don't add self
 					}
-					rt.TryAddPeer(p, true, false)
+					rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 				}
 
 				// --- Collect Metrics from the filled table ---

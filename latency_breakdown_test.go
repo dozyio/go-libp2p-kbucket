@@ -3,6 +3,7 @@
 package kbucket
 
 import (
+	ma "github.com/multiformats/go-multiaddr"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func TestGreedyAdaptiveLatencyBreakdown(t *testing.T) {
 		p := test.RandPeerIDFatal(t)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -66,7 +67,7 @@ func TestGreedyAdaptiveLatencyBreakdown(t *testing.T) {
 
 		// SERVER: Compute PIR
 		serverStart := time.Now()
-		responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+		responses, err := rt.GetBucketPIRGreedyAdaptive(queryVec)
 		serverTime := time.Since(serverStart)
 		require.NoError(t, err)
 		totalServerCompute += serverTime
@@ -171,7 +172,7 @@ func BenchmarkGreedyAdaptiveLatencyComponents(b *testing.B) {
 		p := test.RandPeerIDFatal(b)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -195,7 +196,7 @@ func BenchmarkGreedyAdaptiveLatencyComponents(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+			responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 			for _, ct := range responses {
 				ct.Close()
 			}
@@ -204,7 +205,7 @@ func BenchmarkGreedyAdaptiveLatencyComponents(b *testing.B) {
 
 	b.Run("Client_Decryption", func(b *testing.B) {
 		queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-		responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+		responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 		queryVec.Close()
 
 		b.ReportAllocs()
@@ -221,7 +222,7 @@ func BenchmarkGreedyAdaptiveLatencyComponents(b *testing.B) {
 	b.Run("Client_Total", func(b *testing.B) {
 		// Pre-create server response
 		queryVec, _ := ctx.CreateQueryVectorGreedy(targetCPL)
-		responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec, ps)
+		responses, _ := rt.GetBucketPIRGreedyAdaptive(queryVec)
 		queryVec.Close()
 
 		b.ReportAllocs()
@@ -264,7 +265,7 @@ func TestPagedLatencyBreakdown(t *testing.T) {
 		p := test.RandPeerIDFatal(t)
 		addrs := generateLargeMultiaddrs(i)
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedCount++
 		}
 	}
@@ -291,7 +292,7 @@ func TestPagedLatencyBreakdown(t *testing.T) {
 
 		// SERVER: Compute PIR
 		serverStart := time.Now()
-		response, err := rt.GetBucketPIRPaged(queryVec, ps)
+		response, err := rt.GetBucketPIRPaged(queryVec)
 		serverTime := time.Since(serverStart)
 		require.NoError(t, err)
 		totalServerCompute += serverTime

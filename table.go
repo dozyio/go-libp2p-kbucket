@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 
 	"github.com/libp2p/go-libp2p-kbucket/peerdiversity"
 
 	logging "github.com/ipfs/go-log/v2"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("table")
@@ -22,7 +22,21 @@ var log = logging.Logger("table")
 var (
 	ErrPeerRejectedHighLatency = errors.New("peer rejected; latency too high")
 	ErrPeerRejectedNoCapacity  = errors.New("peer rejected; insufficient capacity")
+	ErrNoAddresses             = errors.New("peer must have at least one address")
 )
+
+// PeerLatencyMetrics provides latency information for peers.
+// This is the minimal interface needed by the routing table to filter high-latency peers.
+//
+// The peerstore.Metrics interface from libp2p satisfies this interface, allowing
+// seamless integration with the libp2p DHT. For standalone usage, you can implement
+// your own metrics tracker or pass nil to disable latency filtering.
+type PeerLatencyMetrics interface {
+	// LatencyEWMA returns the exponentially-weighted moving average
+	// of all latency measurements for a peer.
+	// Returns 0 if no measurements exist for the peer.
+	LatencyEWMA(peer.ID) time.Duration
+}
 
 // RoutingTable defines the routing table.
 type RoutingTable struct {
@@ -38,7 +52,7 @@ type RoutingTable struct {
 	tabLock sync.RWMutex
 
 	// latency metrics
-	metrics peerstore.Metrics
+	metrics PeerLatencyMetrics
 
 	// Maximum acceptable latency for peers in this cluster
 	maxLatency time.Duration
@@ -66,8 +80,13 @@ type RoutingTable struct {
 }
 
 // NewRoutingTable creates a new routing table with a given bucketsize, local ID, and latency tolerance.
-// pirConfig is optional - if nil, PIR functionality will be disabled but the table will still work.
-func NewRoutingTable(bucketsize int, localID ID, latency time.Duration, m peerstore.Metrics, usefulnessGracePeriod time.Duration,
+//
+// Parameters:
+//   - m: Optional PeerLatencyMetrics for filtering high-latency peers.
+//     Pass nil to disable latency filtering.
+//     When using with libp2p DHT, pass the host's Peerstore (it implements PeerLatencyMetrics).
+//   - pirConfig: Optional PIR configuration. Pass nil to disable PIR functionality.
+func NewRoutingTable(bucketsize int, localID ID, latency time.Duration, m PeerLatencyMetrics, usefulnessGracePeriod time.Duration,
 	df *peerdiversity.Filter, pirConfig *PIRConfig,
 ) (*RoutingTable, error) {
 	var strategy PIRStrategy
@@ -207,15 +226,23 @@ func (rt *RoutingTable) UsefulNewPeer(p peer.ID) bool {
 // the boolean value will ALWAYS be false i.e. the peer wont be added to the Routing Table it it's not already there.
 //
 // A return value of false with error=nil indicates that the peer ALREADY exists in the Routing Table.
-func (rt *RoutingTable) TryAddPeer(p peer.ID, queryPeer bool, isReplaceable bool) (bool, error) {
+//
+// The addrs parameter must contain at least one address. If addrs is empty or nil, ErrNoAddresses is returned.
+// For existing peers, addresses are replaced with the new addrs list.
+func (rt *RoutingTable) TryAddPeer(p peer.ID, addrs []ma.Multiaddr, queryPeer bool, isReplaceable bool) (bool, error) {
 	rt.tabLock.Lock()
 	defer rt.tabLock.Unlock()
 
-	return rt.addPeer(p, queryPeer, isReplaceable)
+	return rt.addPeer(p, addrs, queryPeer, isReplaceable)
 }
 
 // locking is the responsibility of the caller
-func (rt *RoutingTable) addPeer(p peer.ID, queryPeer bool, isReplaceable bool) (bool, error) {
+func (rt *RoutingTable) addPeer(p peer.ID, addrs []ma.Multiaddr, queryPeer bool, isReplaceable bool) (bool, error) {
+	// Validate addresses
+	if len(addrs) == 0 {
+		return false, ErrNoAddresses
+	}
+
 	bucketID := rt.bucketIdForPeer(p)
 	bucket := rt.buckets[bucketID]
 
@@ -227,6 +254,9 @@ func (rt *RoutingTable) addPeer(p peer.ID, queryPeer bool, isReplaceable bool) (
 
 	// peer already exists in the Routing Table.
 	if peerInfo := bucket.getPeer(p); peerInfo != nil {
+		// Update addresses (replace, don't merge)
+		peerInfo.Addrs = addrs
+
 		// if we're querying the peer first time after adding it, let's give it a
 		// usefulness bump. This will ONLY happen once.
 		if peerInfo.LastUsefulAt.IsZero() && queryPeer {
@@ -236,7 +266,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, queryPeer bool, isReplaceable bool) (
 	}
 
 	// peer's latency threshold is NOT acceptable
-	if rt.metrics.LatencyEWMA(p) > rt.maxLatency {
+	if rt.metrics != nil && rt.metrics.LatencyEWMA(p) > rt.maxLatency {
 		// Connection doesnt meet requirements, skip!
 		return false, ErrPeerRejectedHighLatency
 	}
@@ -254,6 +284,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, queryPeer bool, isReplaceable bool) (
 	if bucket.len() < rt.bucketsize {
 		bucket.pushFront(&PeerInfo{
 			Id:                            p,
+			Addrs:                         addrs,
 			LastUsefulAt:                  lastUsefulAt,
 			LastSuccessfulOutboundQueryAt: now,
 			AddedAt:                       now,
@@ -275,6 +306,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, queryPeer bool, isReplaceable bool) (
 		if bucket.len() < rt.bucketsize {
 			bucket.pushFront(&PeerInfo{
 				Id:                            p,
+				Addrs:                         addrs,
 				LastUsefulAt:                  lastUsefulAt,
 				LastSuccessfulOutboundQueryAt: now,
 				AddedAt:                       now,
@@ -302,6 +334,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, queryPeer bool, isReplaceable bool) (
 		// the bucket.
 		bucket.pushFront(&PeerInfo{
 			Id:                            p,
+			Addrs:                         addrs,
 			LastUsefulAt:                  lastUsefulAt,
 			LastSuccessfulOutboundQueryAt: now,
 			AddedAt:                       now,
@@ -376,6 +409,22 @@ func (rt *RoutingTable) UpdateLastUsefulAt(p peer.ID, t time.Time) bool {
 
 	if pc := bucket.getPeer(p); pc != nil {
 		pc.LastUsefulAt = t
+		return true
+	}
+	return false
+}
+
+// UpdatePeerAddrs updates the addresses for an existing peer in the routing table.
+// Returns true if the peer was found and updated, false otherwise.
+func (rt *RoutingTable) UpdatePeerAddrs(p peer.ID, addrs []ma.Multiaddr) bool {
+	rt.tabLock.Lock()
+	defer rt.tabLock.Unlock()
+
+	bucketID := rt.bucketIdForPeer(p)
+	bucket := rt.buckets[bucketID]
+
+	if peerInfo := bucket.getPeer(p); peerInfo != nil {
+		peerInfo.Addrs = addrs
 		return true
 	}
 	return false
@@ -632,7 +681,11 @@ func (rt *RoutingTable) Print() {
 
 		for e := b.list.Front(); e != nil; e = e.Next() {
 			p := e.Value.(*PeerInfo).Id
-			fmt.Printf("\t\t- %s %s\n", p.String(), rt.metrics.LatencyEWMA(p).String())
+			if rt.metrics != nil {
+				fmt.Printf("\t\t- %s %s\n", p.String(), rt.metrics.LatencyEWMA(p).String())
+			} else {
+				fmt.Printf("\t\t- %s\n", p.String())
+			}
 		}
 	}
 	rt.tabLock.RUnlock()
@@ -675,7 +728,7 @@ func (rt *RoutingTable) maxCommonPrefix() uint {
 // GetBucket performs a PIR query using the configured strategy.
 // This is the new unified interface for all PIR operations.
 // Returns an error if no PIR strategy is configured.
-func (rt *RoutingTable) GetBucket(cpl int, ps peerstore.Peerstore) ([]ConnectablePeer, error) {
+func (rt *RoutingTable) GetBucket(cpl int) ([]ConnectablePeer, error) {
 	if rt.pirStrategy == nil {
 		return nil, errors.New("PIR is not enabled - no strategy configured")
 	}
@@ -688,7 +741,7 @@ func (rt *RoutingTable) GetBucket(cpl int, ps peerstore.Peerstore) ([]Connectabl
 	defer query.Close()
 
 	// Execute PIR on routing table
-	response, err := rt.pirStrategy.ExecutePIR(query, rt, ps)
+	response, err := rt.pirStrategy.ExecutePIR(query, rt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute PIR: %w", err)
 	}

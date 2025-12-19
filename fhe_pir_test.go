@@ -52,7 +52,7 @@ func TestFHEPIRRouting(t *testing.T) {
 		addrs := []ma.Multiaddr{addr}
 
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedPeers = append(addedPeers, p)
 		}
 	}
@@ -80,7 +80,7 @@ func TestFHEPIRRouting(t *testing.T) {
 	// 7. Server Side: Handle PIR
 	start := time.Now()
 	// Pass 'ps' as the new argument
-	encryptedResponse, err := rt.GetBucketPIR(queryVec, ps)
+	encryptedResponse, err := rt.GetBucketPIR(queryVec)
 	require.NoError(t, err)
 	defer encryptedResponse.Close()
 	t.Logf("PIR Lookup Time: %v", time.Since(start))
@@ -147,7 +147,7 @@ func addPeerWithCPL(t *testing.T, rt *RoutingTable, ps peerstore.Peerstore, loca
 
 	ps.AddAddrs(p, []ma.Multiaddr{addr}, time.Hour)
 
-	added, err := rt.TryAddPeer(p, true, false)
+	added, err := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false)
 	require.NoError(t, err)
 	require.True(t, added, "Failed to add peer with CPL %d", cpl)
 	return p
@@ -208,7 +208,7 @@ func TestFHEPIRRouting_Exhaustive(t *testing.T) {
 			}()
 
 			// --- Server Side ---
-			encryptedResponse, err := rt.GetBucketPIR(queryVec, ps)
+			encryptedResponse, err := rt.GetBucketPIR(queryVec)
 			require.NoError(t, err)
 			defer encryptedResponse.Close()
 
@@ -276,7 +276,7 @@ func TestFHEPIRRoutingPacked(t *testing.T) {
 		addrs := []ma.Multiaddr{addr}
 
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedPeers = append(addedPeers, p)
 		}
 	}
@@ -301,7 +301,7 @@ func TestFHEPIRRoutingPacked(t *testing.T) {
 
 	// 7. Server Side: Handle PIR with Packed Query
 	start = time.Now()
-	encryptedResponse, err := rt.GetBucketPIRPacked(queryCt, ps)
+	encryptedResponse, err := rt.GetBucketPIRPacked(queryCt)
 	require.NoError(t, err)
 	defer encryptedResponse.Close()
 	t.Logf("PIR Lookup Time (Packed): %v", time.Since(start))
@@ -387,7 +387,7 @@ func TestFHEPIRRoutingPacked_Exhaustive(t *testing.T) {
 			defer queryCt.Close()
 
 			// --- Server Side ---
-			encryptedResponse, err := rt.GetBucketPIRPacked(queryCt, ps)
+			encryptedResponse, err := rt.GetBucketPIRPacked(queryCt)
 			require.NoError(t, err)
 			defer encryptedResponse.Close()
 
@@ -446,7 +446,7 @@ func TestFHEPIRRoutingPaged(t *testing.T) {
 		addrs := []ma.Multiaddr{addr}
 
 		ps.AddAddrs(p, addrs, time.Hour)
-		if added, _ := rt.TryAddPeer(p, true, false); added {
+		if added, _ := rt.TryAddPeer(p, []ma.Multiaddr{testAddr}, true, false); added {
 			addedPeers = append(addedPeers, p)
 		}
 	}
@@ -475,7 +475,7 @@ func TestFHEPIRRoutingPaged(t *testing.T) {
 
 	// 7. Server Side: Handle PIR with Paged Query
 	start = time.Now()
-	encryptedResponse, err := rt.GetBucketPIRPaged(queryVector, ps)
+	encryptedResponse, err := rt.GetBucketPIRPaged(queryVector)
 	require.NoError(t, err)
 	defer encryptedResponse.Close()
 	t.Logf("PIR Lookup Time (Paged): %v", time.Since(start))
