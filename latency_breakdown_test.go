@@ -25,7 +25,7 @@ func TestGreedyAdaptiveLatencyBreakdown(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -161,7 +161,7 @@ func BenchmarkGreedyAdaptiveLatencyComponents(b *testing.B) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(b, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(b, err)
 	rt.EnableFHE(ctx)
 
@@ -254,7 +254,7 @@ func TestPagedLatencyBreakdown(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 

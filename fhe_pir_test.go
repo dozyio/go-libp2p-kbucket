@@ -35,7 +35,7 @@ func TestFHEPIRRouting(t *testing.T) {
 	require.NoError(t, err)
 
 	// FIX 1: Pass 'ps' directly. The Peerstore interface embeds the Metrics interface.
-	rt, err := NewRoutingTable(5, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(5, ConvertPeerID(local), time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -170,7 +170,7 @@ func TestFHEPIRRouting_Exhaustive(t *testing.T) {
 	require.NoError(t, err)
 
 	// k=5, 1 bucket.
-	rt, err := NewRoutingTable(5, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(5, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -261,7 +261,7 @@ func TestFHEPIRRoutingPacked(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(5, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(5, ConvertPeerID(local), time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -359,7 +359,7 @@ func TestFHEPIRRoutingPacked_Exhaustive(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(5, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(5, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -431,7 +431,7 @@ func TestFHEPIRRoutingPaged(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(5, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(5, ConvertPeerID(local), time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 

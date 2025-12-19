@@ -16,20 +16,20 @@ import (
 )
 
 // This example demonstrates privacy-preserving routing table lookups using FHE
-// with the Greedy Adaptive PIR mechanism.
+// with the new Strategy Pattern API.
 //
 // Scenario:
 //   - Server hosts a routing table with multiple peers
 //   - Client wants to find peers close to a target ID
 //   - Client doesn't want to reveal the target ID to the server
-//   - Server uses Greedy Adaptive PIR to return the bucket without learning the target
+//   - Server uses PIR to return the bucket without learning the target
 //   - Client filters locally to find the K-nearest peers
 //
-// The Greedy Adaptive method:
-//   - Uses a single packed ciphertext query (not 24 separate ciphertexts)
-//   - Adapts to bucket size (returns 1+ ciphertexts based on max bucket size)
-//   - Uses "Destructive Summation" to ensure only 1 bucket is retrievable
-//   - Provides better performance and security than basic PIR
+// The new Strategy Pattern allows easy switching between PIR methods:
+//   - Standard: 24 ciphertexts (no rotation keys)
+//   - Paged: 1-24 ciphertexts depending on ring size (no rotation keys)
+//   - Greedy Adaptive: 1 ciphertext query (requires rotation keys)
+//   - Greedy Normalized: Same as Greedy but with normalized bucket sizes (recommended)
 //
 // To run this example:
 //   1. Install OpenFHE C++ library: https://github.com/openfheorg/openfhe-development
@@ -37,7 +37,7 @@ import (
 //   3. Run: ./fhe_routing
 
 func main() {
-	fmt.Println("=== FHE-Based Private Routing Table Lookup (Greedy Adaptive PIR With Normalized Routing Table) ===")
+	fmt.Println("=== FHE-Based Private Routing Table Lookup (Strategy Pattern) ===")
 
 	bucketSize := 20
 
@@ -49,37 +49,49 @@ func main() {
 	}
 	defer fheCtx.Close()
 
-	// naive key rotations
-	// err = fheCtx.GenerateKeysWithRotation()
-	// use power-of-two keys
-	// err = fheCtx.GenerateKeysPowerOfTwo()
-	// single unit keys
-	// err = fheCtx.GenerateKeysMinimal()
-	// sparse keys
-	err = fheCtx.GenerateKeysSparse()
-	if err != nil {
-		log.Fatalf("Failed to generate FHE keys: %v", err)
-	}
-	fmt.Println("   ✓ FHE context created with STD128 security")
-	fmt.Println("   ✓ Rotation keys generated for Greedy Adaptive PIR")
+	// Step 2: Choose PIR strategy
+	strategy := kbucket.PIRStrategyGreedyNormalized
 
+	// Step 3: Generate keys for chosen strategy
+	fmt.Printf("2. Generating keys for strategy: %s...\n", strategy)
+	err = fheCtx.GenerateKeysForStrategy(strategy)
+	if err != nil {
+		log.Fatalf("Failed to generate keys: %v", err)
+	}
+
+	// Show strategy metadata
+	metadata := kbucket.GetStrategyMetadata(strategy, fheCtx.RingDim())
+	fmt.Printf("   Strategy: %s\n", metadata.Name)
+	fmt.Printf("   Rotation keys: %.2f MB\n", metadata.RotationKeySizeMB)
+	fmt.Printf("   Query size: %.2f MB\n", metadata.QuerySizeMB)
+	fmt.Printf("   Recommended for: %s\n", metadata.RecommendedFor)
+
+	// Show actual key sizes
 	ccBytes, _ := openfhe.SerializeCryptoContextToBytes(fheCtx.CC)
-	fmt.Printf("Context (Params):     %s\n", formatSize(len(ccBytes)))
+	fmt.Printf("\n   Actual sizes:\n")
+	fmt.Printf("   Context (Params):     %s\n", formatSize(len(ccBytes)))
 
 	pkBytes, _ := openfhe.SerializePublicKeyToBytes(fheCtx.KP)
-	fmt.Printf("Public Key:           %s\n", formatSize(len(pkBytes)))
+	fmt.Printf("   Public Key:           %s\n", formatSize(len(pkBytes)))
 
 	skBytes, _ := openfhe.SerializePrivateKeyToBytes(fheCtx.KP)
-	fmt.Printf("Private Key:          %s\n", formatSize(len(skBytes)))
+	fmt.Printf("   Private Key:          %s\n", formatSize(len(skBytes)))
 
 	multBytes, _ := openfhe.SerializeEvalMultKeyToBytes(fheCtx.CC, "")
-	fmt.Printf("Relinearization Key:  %s\n", formatSize(len(multBytes)))
+	fmt.Printf("   Relinearization Key:  %s\n", formatSize(len(multBytes)))
 
 	rotBytes, _ := openfhe.SerializeEvalAutomorphismKeyToBytes(fheCtx.CC, "")
-	fmt.Printf("Rotation Keys (Total):%s\n", formatSize(len(rotBytes)))
+	fmt.Printf("   Rotation Keys (Total):%s\n", formatSize(len(rotBytes)))
 
-	// Step 2: Create server's routing table
-	fmt.Println("\n2. Creating server routing table...")
+	// Step 4: Create PIR config
+	pirConfig := &kbucket.PIRConfig{
+		Strategy:     strategy,
+		BucketStride: 0, // 0 = auto-calculate optimal
+		FHEContext:   fheCtx,
+	}
+
+	// Step 5: Create server's routing table with PIR
+	fmt.Println("\n3. Creating server routing table with PIR enabled...")
 	localPeer := test.RandPeerIDFatal(nil)
 	localID := kbucket.ConvertPeerID(localPeer)
 
@@ -95,35 +107,28 @@ func main() {
 		ps,            // peerstore (metrics)
 		100*time.Hour, // usefulness grace period
 		nil,           // peer diversity filter
+		pirConfig,     // PIR configuration (REQUIRED)
 	)
 	if err != nil {
 		log.Fatalf("Failed to create routing table: %v", err)
 	}
 
-	// Enable FHE for this routing table
-	rt.EnableFHE(fheCtx)
 	fmt.Printf("   ✓ Routing table created for peer %s\n", localPeer.String()[:16]+"...")
-	fmt.Println("   ✓ FHE enabled with Greedy Adaptive PIR")
+	fmt.Printf("   ✓ PIR enabled with: %s\n", rt.PIRStrategyName())
 
-	// Step 3: Populate routing table with peers
-	fmt.Println("\n3. Populating routing table with peers...")
+	// Step 6: Populate routing table with peers
+	fmt.Println("\n4. Populating routing table with peers...")
 
-	// Strategy: Add peers across different CPL ranges to create multiple buckets
-	// This ensures the routing table splits into more buckets, allowing more total peers
 	peers := make([]peer.ID, 0, 100000)
 
-	// Add peers for CPL 0-15 to force bucket splitting
-	// Each CPL gets multiple peers to fill buckets and trigger splits
 	for cpl := range 16 {
-		peersForCPL := bucketSize // Add k peers per CPL level
+		peersForCPL := bucketSize
 		for i := range peersForCPL {
-			// Generate a peer with specific CPL to local node
 			p, err := kbucket.GenRandPeerIDWithCPL(localID, uint(cpl))
 			if err != nil {
 				continue
 			}
 
-			// Add multiaddr for this peer to peerstore
 			addrStr := fmt.Sprintf("/ip4/127.0.0.%d/tcp/%d", cpl+1, 10000+i)
 			addr, err := ma.NewMultiaddr(addrStr)
 			if err != nil {
@@ -131,13 +136,8 @@ func main() {
 			}
 			ps.AddAddrs(p, []ma.Multiaddr{addr}, time.Hour)
 
-			// Try to add peer to routing table
-			// - queryPeer=true: this is a peer we queried (sets LastUsefulAt)
-			// - isReplaceable=true: allows this peer to be replaced if bucket is full
-			// Note: Buckets split automatically when the LAST bucket becomes full
 			added, err := rt.TryAddPeer(p, true, true)
 			if err != nil {
-				// Silently skip peers that can't be added
 				continue
 			}
 			if added {
@@ -148,22 +148,20 @@ func main() {
 
 	fmt.Printf("   ✓ Added %d peers to routing table\n", rt.Size())
 	fmt.Printf("   ✓ Routing table will auto-expand as needed (bucket splitting)\n")
-	// rt.Print()
 
-	// Step 4: Client creates a target ID (what they're searching for)
-	fmt.Println("\n4. Client selects target peer to search for...")
+	// Step 7: Client creates a target ID (what they're searching for)
+	fmt.Println("\n5. Client selects target peer to search for...")
 	if len(peers) == 0 {
 		log.Fatalf("No peers were added to the routing table")
 	}
-	targetPeer := peers[len(peers)/2] // Pick a peer in the middle
+	targetPeer := peers[len(peers)/2]
 	targetID := kbucket.ConvertPeerID(targetPeer)
 	targetCPL := kbucket.CommonPrefixLen(localID, targetID)
 	fmt.Printf("   Target peer: %s\n", targetPeer.String()[:16]+"...")
 	fmt.Printf("   Target CPL:  %d\n", targetCPL)
 
-	// Step 5: Traditional (non-private) lookup for comparison
-	fmt.Println("\n5. Traditional lookup (server learns target)...")
-	// Calculate which bucket will be used (same logic as NearestPeers)
+	// Step 8: Traditional (non-private) lookup for comparison
+	fmt.Println("\n6. Traditional lookup (server learns target)...")
 	lookupCPL := kbucket.CommonPrefixLen(targetID, localID)
 	fmt.Printf("   Bucket index used: %d (based on CPL between target and local node)\n", lookupCPL)
 	start := time.Now()
@@ -171,79 +169,41 @@ func main() {
 	traditionalDuration := time.Since(start)
 	fmt.Printf("   Found %d peers in %v\n", len(traditionalPeers), traditionalDuration)
 
-	// Step 6: FHE-based private lookup using Greedy Adaptive PIR
-	fmt.Println("\n6. FHE-based private lookup (Greedy Adaptive PIR)...")
+	// Step 9: FHE-based private lookup using new unified API
+	fmt.Println("\n7. FHE-based private lookup (using new GetBucket API)...")
 
-	// Client encrypts the query as a single packed ciphertext
-	fmt.Println("   a) Client creates encrypted query vector...")
-	encryptStart := time.Now()
-	queryCt, err := fheCtx.CreateQueryVectorGreedy(targetCPL)
-	if err != nil {
-		log.Fatalf("Failed to create query vector: %v", err)
-	}
-	defer queryCt.Close()
-	encryptDuration := time.Since(encryptStart)
-	fmt.Printf("      ✓ Query encryption took %v\n", encryptDuration)
-	fmt.Printf("      ✓ Single packed ciphertext\n")
-
-	// Server processes the encrypted query
-	fmt.Println("   b) Server processes encrypted query...")
 	queryStart := time.Now()
-	responseCts, err := rt.GetBucketPIRGreedyAdaptiveNormalized(queryCt, ps, fheCtx.KP)
+	bucketPeers, err := rt.GetBucket(targetCPL, ps)
 	if err != nil {
-		log.Fatalf("Failed to get bucket: %v", err)
+		log.Fatalf("PIR query failed: %v", err)
 	}
-	defer func() {
-		for _, ct := range responseCts {
-			ct.Close()
-		}
-	}()
 	queryDuration := time.Since(queryStart)
-	fmt.Printf("      ✓ Server computed PIR response in %v\n", queryDuration)
-	fmt.Printf("      ✓ Returned %d ciphertext(s) (adaptive to bucket size)\n", len(responseCts))
-	fmt.Println("      ✓ Server never learned the target ID!")
 
-	// Client decrypts the response
-	fmt.Println("   c) Client decrypts response...")
-	decryptStart := time.Now()
-	bucketPeers, err := fheCtx.DecryptGreedyAdaptiveResponse(responseCts)
-	if err != nil {
-		log.Fatalf("Failed to decrypt response: %v", err)
-	}
-	decryptDuration := time.Since(decryptStart)
-	fmt.Printf("      ✓ Decryption took %v\n", decryptDuration)
-	fmt.Printf("      ✓ Retrieved %d peers from bucket\n", len(bucketPeers))
+	fmt.Printf("   ✓ Retrieved %d peers in %v\n", len(bucketPeers), queryDuration)
+	fmt.Printf("   ✓ Server never learned target ID!\n")
+	fmt.Printf("   ✓ Using strategy: %s\n", rt.PIRStrategyName())
 
-	// Client filters locally
-	fmt.Println("   d) Client filters locally to find K-nearest...")
-	// Convert ConnectablePeers to peer.IDs for filtering
+	// Step 10: Client filters locally
+	fmt.Println("\n8. Client filters locally to find K-nearest...")
 	bucketPeerIDs := make([]peer.ID, len(bucketPeers))
 	for i, cp := range bucketPeers {
 		bucketPeerIDs[i] = cp.ID
 	}
 	kNearest := findKNearest(bucketPeerIDs, targetID, 20)
-	fmt.Printf("      ✓ Found %d nearest peers\n", len(kNearest))
+	fmt.Printf("   ✓ Found %d nearest peers\n", len(kNearest))
 
-	// Step 7: Compare results
-	fmt.Println("\n7. Comparing results...")
-	totalFHETime := encryptDuration + queryDuration + decryptDuration
+	// Step 11: Compare results
+	fmt.Println("\n9. Comparing results...")
 	fmt.Printf("   Traditional time: %v\n", traditionalDuration)
 	fmt.Printf("   FHE time:         %v (%.1fx slower)\n",
-		totalFHETime, float64(totalFHETime)/float64(traditionalDuration))
-	fmt.Printf("   \n")
-	fmt.Printf("   Breakdown:\n")
-	fmt.Printf("     - Query creation:  %v\n", encryptDuration)
-	fmt.Printf("     - Server PIR:      %v\n", queryDuration)
-	fmt.Printf("     - Client decrypt:  %v\n", decryptDuration)
+		queryDuration, float64(queryDuration)/float64(traditionalDuration))
 	fmt.Printf("   \n")
 	fmt.Printf("   Privacy gain: Target ID completely hidden from server\n")
-	fmt.Printf("   Security:     Destructive Summation ensures only 1 bucket retrievable\n")
 
 	// Verify correctness
 	matches := 0
-	fmt.Println("\n8. Verifying similar results...")
+	fmt.Println("\n10. Verifying similar results...")
 
-	// Create a map for O(1) lookups
 	tradMap := make(map[peer.ID]bool)
 	for _, p := range traditionalPeers {
 		tradMap[p] = true
@@ -258,19 +218,16 @@ func main() {
 	fmt.Printf("   ✓ %d/%d peers match (%.1f%% accuracy)\n",
 		matches, len(kNearest), float64(matches)/float64(len(kNearest))*100)
 
-	// Verify correctness
-	fmt.Println("\n8. Verifying Routing Convergence...")
+	// Verify routing convergence
+	fmt.Println("\n11. Verifying Routing Convergence...")
 
-	// Calculate the distance from Local Node to Target
 	localDist := kbucket.Xor(localID, targetID)
 
 	validHops := 0
 	for _, p := range kNearest {
-		// Calculate distance from Retrieved Peer to Target
 		pID := kbucket.ConvertPeerID(p)
 		pDist := kbucket.Xor(pID, targetID)
 
-		// Check if the Retrieved Peer is strictly closer than Local Node
 		if distLess(pDist, localDist) {
 			validHops++
 		}
@@ -281,20 +238,23 @@ func main() {
 	if validHops > 0 {
 		fmt.Println("   ✓ SUCCESS: The private lookup returned peers that allow routing to proceed.")
 	} else {
-		// Note: In a very sparse network or edge case, 0 is theoretically possible
-		// if the server itself is the closest node, but unlikely with 20 peers.
 		fmt.Println("   ⚠ FAILURE: No progress made towards target.")
 	}
+
+	fmt.Println("\n=== Example Complete ===")
+	fmt.Printf("\nKey Takeaways:\n")
+	fmt.Printf("  • New Strategy Pattern API simplifies PIR configuration\n")
+	fmt.Printf("  • Single unified GetBucket() method for all strategies\n")
+	fmt.Printf("  • Automatic key generation based on chosen strategy\n")
+	fmt.Printf("  • Easy to compare different PIR methods via metadata\n")
 }
 
 // findKNearest finds the K nearest peers to a target ID from a list of candidates.
-// This would typically be done on the client side after receiving the bucket.
 func findKNearest(candidates []peer.ID, target kbucket.ID, k int) []peer.ID {
 	if len(candidates) <= k {
 		return candidates
 	}
 
-	// Sort by XOR distance to target
 	type peerDist struct {
 		peer peer.ID
 		dist kbucket.ID
@@ -307,7 +267,6 @@ func findKNearest(candidates []peer.ID, target kbucket.ID, k int) []peer.ID {
 		distances[i] = peerDist{peer: p, dist: dist}
 	}
 
-	// Simple selection sort for K nearest
 	for i := 0; i < k && i < len(distances); i++ {
 		minIdx := i
 		for j := i + 1; j < len(distances); j++ {

@@ -39,6 +39,10 @@ func (ctx *FHEContext) GenerateKeys() error {
 
 func (ctx *FHEContext) Close() {}
 
+func (ctx *FHEContext) RingDim() int {
+	return 0
+}
+
 func (ctx *FHEContext) EncryptPeerID(id ID) (*EncryptedID, error) {
 	return nil, errFHEStub
 }

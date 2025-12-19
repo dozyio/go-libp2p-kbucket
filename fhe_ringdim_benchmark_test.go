@@ -428,7 +428,7 @@ func benchmarkEndToEnd24CTSingle(b *testing.B, multDepth uint32) {
 	local := test.RandPeerIDFatal(b)
 	localID := ConvertPeerID(local)
 	ps, _ := pstoremem.NewPeerstore()
-	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 
 	// Enable FHE (convert custom context to regular context)
 	fheCtx := &FHEContext{
@@ -541,7 +541,7 @@ func benchmarkEndToEndPagedSingle(b *testing.B, multDepth uint32) {
 	local := test.RandPeerIDFatal(b)
 	localID := ConvertPeerID(local)
 	ps, _ := pstoremem.NewPeerstore()
-	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 
 	// Enable FHE
 	fheCtx := &FHEContext{

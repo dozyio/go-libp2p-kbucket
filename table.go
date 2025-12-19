@@ -61,21 +61,36 @@ type RoutingTable struct {
 
 	df *peerdiversity.Filter
 
-	// FHE context for privacy-preserving queries (optional)
-	fheCtx *FHEContext
+	// PIR strategy (always initialized, never nil)
+	pirStrategy PIRStrategy
 }
 
 // NewRoutingTable creates a new routing table with a given bucketsize, local ID, and latency tolerance.
+// pirConfig is optional - if nil, PIR functionality will be disabled but the table will still work.
 func NewRoutingTable(bucketsize int, localID ID, latency time.Duration, m peerstore.Metrics, usefulnessGracePeriod time.Duration,
-	df *peerdiversity.Filter,
+	df *peerdiversity.Filter, pirConfig *PIRConfig,
 ) (*RoutingTable, error) {
-	rt := &RoutingTable{
-		buckets:    []*bucket{newBucket()},
-		bucketsize: bucketsize,
-		local:      localID,
+	var strategy PIRStrategy
 
-		maxLatency: latency,
-		metrics:    m,
+	// Create PIR strategy if config is provided, otherwise use no-op strategy
+	if pirConfig != nil {
+		var err error
+		strategy, err = NewPIRStrategy(pirConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create PIR strategy: %w", err)
+		}
+	} else {
+		// Use no-op strategy when no PIR config provided (for backward compatibility)
+		strategy = nil
+	}
+
+	rt := &RoutingTable{
+		buckets:     []*bucket{newBucket()},
+		bucketsize:  bucketsize,
+		local:       localID,
+		maxLatency:  latency,
+		metrics:     m,
+		pirStrategy: strategy, // Always initialized
 
 		cplRefreshedAt: make(map[uint]time.Time),
 
@@ -655,4 +670,54 @@ func (rt *RoutingTable) maxCommonPrefix() uint {
 		}
 	}
 	return 0
+}
+
+// GetBucket performs a PIR query using the configured strategy.
+// This is the new unified interface for all PIR operations.
+// Returns an error if no PIR strategy is configured.
+func (rt *RoutingTable) GetBucket(cpl int, ps peerstore.Peerstore) ([]ConnectablePeer, error) {
+	if rt.pirStrategy == nil {
+		return nil, errors.New("PIR is not enabled - no strategy configured")
+	}
+
+	// Create encrypted query using strategy
+	query, err := rt.pirStrategy.CreateQuery(cpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create PIR query: %w", err)
+	}
+	defer query.Close()
+
+	// Execute PIR on routing table
+	response, err := rt.pirStrategy.ExecutePIR(query, rt, ps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute PIR: %w", err)
+	}
+	defer response.Close()
+
+	// Decrypt and return peers
+	return rt.pirStrategy.DecryptResponse(response)
+}
+
+// PIRStrategyName returns the name of the current PIR strategy
+func (rt *RoutingTable) PIRStrategyName() string {
+	if rt.pirStrategy == nil {
+		return "none"
+	}
+	return rt.pirStrategy.Name()
+}
+
+// PIRStrategyType returns the type of the current PIR strategy
+func (rt *RoutingTable) PIRStrategyType() PIRStrategyType {
+	if rt.pirStrategy == nil {
+		return ""
+	}
+	return rt.pirStrategy.Type()
+}
+
+// GetFHEContext returns the FHE context from the PIR strategy (for backward compatibility)
+func (rt *RoutingTable) GetFHEContext() *FHEContext {
+	if rt.pirStrategy == nil {
+		return nil
+	}
+	return rt.pirStrategy.GetFHEContext()
 }

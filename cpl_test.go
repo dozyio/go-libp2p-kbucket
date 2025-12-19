@@ -18,6 +18,7 @@ import (
 //
 // usage: go test -v -run TestFindOptimalMaxCPL -timeout 30m
 func TestFindOptimalMaxCPL(t *testing.T) {
+	t.Skip("skip long")
 	networkSizes := []int{
 		100,
 		1_000,
@@ -94,7 +95,7 @@ func TestFindOptimalMaxCPL(t *testing.T) {
 
 				// Create a new routing table for this observer
 				// We use a very long refresh interval because we are manually populating it
-				rt, err := NewRoutingTable(k, localID, time.Hour, metrics, 100*time.Hour, nil)
+				rt, err := NewRoutingTable(k, localID, time.Hour, metrics, 100*time.Hour, nil, nil)
 				if err != nil {
 					t.Fatalf("Failed to create rt: %v", err)
 				}

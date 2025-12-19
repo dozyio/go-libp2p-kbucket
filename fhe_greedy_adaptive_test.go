@@ -28,7 +28,7 @@ func TestGreedyAdaptiveBasic(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(20, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, ConvertPeerID(local), time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -143,7 +143,7 @@ func TestGreedyAdaptiveSecurity(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(20, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, ConvertPeerID(local), time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 
@@ -274,7 +274,7 @@ func TestGreedyAdaptiveEmptyBucket(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(20, ConvertPeerID(local), time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, ConvertPeerID(local), time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 

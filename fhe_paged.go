@@ -11,12 +11,18 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
-// BucketStride defines the fixed number of slots allocated per bucket in Paged PIR.
+// DefaultBucketStride defines the default stride for Paged PIR when not specified in PIRConfig.
 // A stride of 8192 slots allows for ~8KB of data per bucket.
 // With realistic multiaddrs (~1-2KB per peer), this supports 4-8 peers per bucket.
 // With ringDim=8192, this gives 1 bucket per plaintext = 24 ciphertexts total.
 // For better compression, use ringDim=16384 to get 2 buckets per plaintext = 12 ciphertexts.
-const BucketStride = 8192
+//
+// Note: This is now configurable via PIRConfig.BucketStride. Use CalculateOptimalStride()
+// for automatic selection based on ring dimension.
+const DefaultBucketStride = 8192
+
+// Deprecated: Use DefaultBucketStride or configure via PIRConfig.BucketStride instead.
+const BucketStride = DefaultBucketStride
 
 // GetBucketPIRPaged performs PIR using the "Paged" strategy (Spatial Packing).
 // It balances upload size and server performance by packing multiple buckets into
@@ -29,12 +35,16 @@ const BucketStride = 8192
 // 3. Client sends one-hot vector selecting the PAGE containing target bucket
 // 4. Server multiplies and accumulates (no rotations needed!)
 // 5. Client extracts data from the correct offset in the response
+//
+// Deprecated: Use GetBucket() with PIRStrategyPaged instead.
+// This method will be removed in v2.0.
 func (rt *RoutingTable) GetBucketPIRPaged(queryVector []*openfhe.Ciphertext, ps peerstore.Peerstore) (*openfhe.Ciphertext, error) {
-	if rt.fheCtx == nil {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
-	cc := rt.fheCtx.CC
-	ringDim := rt.fheCtx.ringDim
+	cc := fheCtx.CC
+	ringDim := fheCtx.ringDim
 
 	if ringDim < BucketStride {
 		return nil, fmt.Errorf("ring dimension %d is too small for bucket stride %d", ringDim, BucketStride)

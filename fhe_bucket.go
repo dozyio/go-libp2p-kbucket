@@ -10,21 +10,54 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
-// EnableFHE enables FHE-based queries for this routing table.
+// Deprecated: PIR is now configured at table creation time via NewRoutingTable.
+// This method will be removed in v2.0.
+//
+// EnableFHE is no longer needed - use PIRConfig parameter in NewRoutingTable instead.
+// For backward compatibility, this creates a StandardPIRStrategy if no strategy is set.
 func (rt *RoutingTable) EnableFHE(ctx *FHEContext) {
-	rt.fheCtx = ctx
+	if rt.pirStrategy != nil {
+		return // Already configured via NewRoutingTable
+	}
+
+	// For backward compatibility: create a standard PIR strategy
+	// This allows old tests to continue working
+	config := &PIRConfig{
+		Strategy:   PIRStrategyStandard,
+		FHEContext: ctx,
+	}
+
+	strategy, err := NewPIRStrategy(config)
+	if err != nil {
+		// Silently fail - this is deprecated anyway
+		return
+	}
+
+	rt.pirStrategy = strategy
 }
 
-// IsFHEEnabled returns true if FHE is enabled for this routing table.
+// Deprecated: PIR is always enabled if a PIRConfig was provided to NewRoutingTable.
+// This method will be removed in v2.0.
+//
+// IsFHEEnabled returns true if PIR is enabled for this routing table.
 func (rt *RoutingTable) IsFHEEnabled() bool {
-	return rt.fheCtx != nil
+	return rt.pirStrategy != nil
 }
 
+// Deprecated: Use GetBucket() with PIRStrategyStandard instead.
+// This method will be removed in v2.0.
+//
+// Migration:
+//
+//	Old: rt.GetBucketPIR(queryVector, ps)
+//	New: rt.GetBucket(cpl, ps)  // with PIRStrategyStandard configured
+//
 // GetBucketPIR performs the Private Information Retrieval lookup using 24 ciphertexts.
 // It takes the client's query vector and the node's peerstore.
 // It returns a single encrypted ciphertext containing the selected bucket's peers.
 func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peerstore.Peerstore) (*openfhe.Ciphertext, error) {
-	if rt.fheCtx == nil {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
 
@@ -36,7 +69,7 @@ func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peers
 		return nil, fmt.Errorf("invalid query vector size: got %d, want %d", len(queryVector), MaxCPL)
 	}
 
-	cc := rt.fheCtx.CC
+	cc := fheCtx.CC
 
 	// 1. Initialize Accumulator with Encrypted Zero
 	zeroPt, err := cc.MakePackedPlaintext([]int64{0})
@@ -154,6 +187,9 @@ func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peers
 	return finalAccumulator, nil
 }
 
+// Deprecated: Use GetBucket() with PIRStrategyPacked instead.
+// This method will be removed in v2.0.
+//
 // GetBucketPIRPacked performs PIR with a single packed ciphertext query (optimized version).
 // This uses one ciphertext with SIMD slots instead of 24 separate ciphertexts.
 // Requires rotation keys generated via GenerateKeysWithRotation().
@@ -164,7 +200,8 @@ func (rt *RoutingTable) GetBucketPIR(queryVector []*openfhe.Ciphertext, ps peers
 // 3. Multiply replicated selector by bucket data (all slots multiplied by same value)
 // 4. Accumulate into final result
 func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore) (*openfhe.Ciphertext, error) {
-	if rt.fheCtx == nil {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
 
@@ -172,7 +209,7 @@ func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext, ps peers
 		return nil, errors.New("peerstore cannot be nil for PIR query")
 	}
 
-	cc := rt.fheCtx.CC
+	cc := fheCtx.CC
 
 	// Initialize accumulator
 	zeroPt, err := cc.MakePackedPlaintext([]int64{0})
@@ -249,8 +286,8 @@ func (rt *RoutingTable) GetBucketPIRPacked(queryCt *openfhe.Ciphertext, ps peers
 
 		// Step 3: Create plaintext with data starting at slot[0]
 		// Since we've replicated the selector to all positions, we can now put data at slot[0..]
-		plaintextVector := make([]int64, rt.fheCtx.ringDim)
-		for j := 0; j < len(serializedData) && j < rt.fheCtx.ringDim; j++ {
+		plaintextVector := make([]int64, fheCtx.ringDim)
+		for j := 0; j < len(serializedData) && j < fheCtx.ringDim; j++ {
 			plaintextVector[j] = serializedData[j]
 		}
 
@@ -295,7 +332,8 @@ func (rt *RoutingTable) extractSlot(cc *openfhe.CryptoContext, ct *openfhe.Ciphe
 	}
 
 	// Step 2: Mask to keep only slot[0], zero out all others
-	maskVector := make([]int64, rt.fheCtx.ringDim)
+	ringDim := int(cc.GetRingDimension())
+	maskVector := make([]int64, ringDim)
 	maskVector[0] = 1
 	maskPt, err := cc.MakePackedPlaintext(maskVector)
 	if err != nil {

@@ -7,11 +7,16 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // PeerInfo holds all related information for a peer in the K-Bucket.
 type PeerInfo struct {
 	Id peer.ID
+
+	// Addrs is the list of multiaddrs for this peer.
+	// Stored locally to avoid external peerstore dependency for PIR operations.
+	Addrs []ma.Multiaddr
 
 	// LastUsefulAt is the time instant at which the peer was last "useful" to us.
 	// Please see the DHT docs for the definition of usefulness.

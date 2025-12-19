@@ -9,6 +9,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
+// Deprecated: Use GetBucket() with PIRStrategyGreedyAdaptive instead.
+// This method will be removed in v2.0.
+//
 // GetBucketPIRGreedyAdaptive performs a secure, capacity-adaptive PIR query.
 //
 // Security: Uses "Destructive Summation" to ensure only 1 bucket is retrievable.
@@ -16,12 +19,13 @@ import (
 //
 //	If a bucket is huge (>32KB), returns 2+ CTs.
 func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore) ([]*openfhe.Ciphertext, error) {
-	if rt.fheCtx == nil {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
 
-	cc := rt.fheCtx.CC
-	ringDim := rt.fheCtx.ringDim
+	cc := fheCtx.CC
+	ringDim := fheCtx.ringDim
 	bytesPerRing := ringDim * 2 // Dense packing (2 bytes/slot)
 
 	// 1. Pre-Calculate Max Size needed
@@ -169,13 +173,17 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptive(queryCt *openfhe.Ciphertext, 
 // Capacity: Adapts to large buckets. If a bucket fits in 1 ring (normal), returns 1 CT.
 //
 //	If a bucket is huge (>32KB), returns 2+ CTs.
+//
+// Deprecated: Use GetBucket() with PIRStrategyGreedyNormalized instead.
+// This method will be removed in v2.0.
 func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ciphertext, ps peerstore.Peerstore, kp *openfhe.KeyPair) ([]*openfhe.Ciphertext, error) {
-	if rt.fheCtx == nil {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
 		return nil, ErrFHENotEnabled
 	}
 
-	cc := rt.fheCtx.CC
-	ringDim := rt.fheCtx.ringDim
+	cc := fheCtx.CC
+	ringDim := fheCtx.ringDim
 	bytesPerRing := ringDim * 2 // Dense packing (2 bytes/slot)
 
 	// 1. Pre-Calculate Max Size needed
@@ -303,11 +311,11 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 			// naive key rotations
 			// rotatedQuery, err := cc.EvalRotate(queryCt, int32(i))
 			// power-of-two rotations
-			// rotatedQuery, err := rt.fheCtx.RotateComposite(queryCt, i)
+			// rotatedQuery, err := fheCtx.RotateComposite(queryCt, i)
 			// single unit rotations
-			// rotatedQuery, err := rt.fheCtx.RotateIterative(queryCt, i)
+			// rotatedQuery, err := fheCtx.RotateIterative(queryCt, i)
 			// sparse rotation
-			rotatedQuery, err := rt.fheCtx.RotateSparse(queryCt, i)
+			rotatedQuery, err := fheCtx.RotateSparse(queryCt, i)
 			if err != nil {
 				pt.Close()
 				continue
@@ -363,7 +371,8 @@ func (rt *RoutingTable) GetBucketPIRGreedyAdaptiveNormalized(queryCt *openfhe.Ci
 // extractAndReplicateBit extracts bit at index 0 and replicates it 'count' times.
 func (rt *RoutingTable) extractAndReplicateBit(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, count int) (*openfhe.Ciphertext, error) {
 	// 1. Mask to isolate bit 0: [b, ?, ?...] -> [b, 0, 0...]
-	mask := make([]int64, rt.fheCtx.ringDim)
+	ringDim := int(cc.GetRingDimension())
+	mask := make([]int64, ringDim)
 	mask[0] = 1
 	maskPt, _ := cc.MakePackedPlaintext(mask)
 
@@ -405,8 +414,14 @@ func (rt *RoutingTable) extractAndReplicateBit(cc *openfhe.CryptoContext, queryW
 
 // extractAndReplicateBitIterative performs replication using only the -1 key.
 func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, count int) (*openfhe.Ciphertext, error) {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
+		return nil, ErrFHENotEnabled
+	}
+
 	// 1. Mask to isolate bit 0
-	mask := make([]int64, rt.fheCtx.ringDim)
+	ringDim := int(cc.GetRingDimension())
+	mask := make([]int64, ringDim)
 	mask[0] = 1
 	maskPt, _ := cc.MakePackedPlaintext(mask)
 
@@ -421,7 +436,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 	// is done by calling RotateIterative(size).
 	for size := 1; size < count; size *= 2 {
 		// Rotate right by 'size' (using -1 key iteratively)
-		rotated, err := rt.fheCtx.RotateIterative(current, -size)
+		rotated, err := fheCtx.RotateIterative(current, -size)
 		if err != nil {
 			if size > 1 {
 				current.Close()
@@ -454,7 +469,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, count int) (*openfhe.Ciphertext, error) {
 //		// 1. Mask to isolate the single bit at index 0
 //		// Transformation: [b, ?, ?...] -> [b, 0, 0...]
-//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask := make([]int64, fheCtx.ringDim)
 //		mask[0] = 1
 //		maskPt, _ := cc.MakePackedPlaintext(mask)
 //
@@ -470,7 +485,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //		for size := 1; size < count; size *= 2 {
 //			// Calculate the rotation: we need to shift RIGHT by 'size'.
 //			// RotateSparse will break this large shift down into steps of -5 and -1.
-//			rotated, err := rt.fheCtx.RotateSparse(current, -size)
+//			rotated, err := fheCtx.RotateSparse(current, -size)
 //			if err != nil {
 //				// If rotation fails, clean up the accumulator
 //				if size > 1 {
@@ -505,7 +520,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //
 //	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
 //		// 1. Mask (Same as before)
-//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask := make([]int64, fheCtx.ringDim)
 //		mask[0] = 1
 //		maskPt, _ := cc.MakePackedPlaintext(mask)
 //		current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
@@ -514,7 +529,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //		// 2. Replicate ONLY up to 'limit'
 //		for size := 1; size < limit; size *= 2 {
 //			// Use RotateSparse to handle the shift (using -1 and -64 keys)
-//			rotated, err := rt.fheCtx.RotateSparse(current, -size)
+//			rotated, err := fheCtx.RotateSparse(current, -size)
 //			if err != nil {
 //				return nil, err
 //			}
@@ -536,7 +551,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //
 //	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
 //		// 1. Mask
-//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask := make([]int64, fheCtx.ringDim)
 //		mask[0] = 1
 //		maskPt, _ := cc.MakePackedPlaintext(mask)
 //		current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
@@ -561,7 +576,7 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //	}
 //
 //	func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
-//		mask := make([]int64, rt.fheCtx.ringDim)
+//		mask := make([]int64, fheCtx.ringDim)
 //		mask[0] = 1
 //		maskPt, _ := cc.MakePackedPlaintext(mask)
 //		current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
@@ -589,8 +604,14 @@ func (rt *RoutingTable) extractAndReplicateBitIterative(cc *openfhe.CryptoContex
 //		return current, nil
 //	}
 func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, queryWithBitAtZero *openfhe.Ciphertext, limit int) (*openfhe.Ciphertext, error) {
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
+		return nil, ErrFHENotEnabled
+	}
+
 	// 1. Mask
-	mask := make([]int64, rt.fheCtx.ringDim)
+	ringDim := int(cc.GetRingDimension())
+	mask := make([]int64, ringDim)
 	mask[0] = 1
 	maskPt, _ := cc.MakePackedPlaintext(mask)
 	current, _ := cc.EvalMultPlain(queryWithBitAtZero, maskPt)
@@ -599,7 +620,7 @@ func (rt *RoutingTable) extractAndReplicateBitSparse(cc *openfhe.CryptoContext, 
 	// 2. Replicate (Doubling)
 	// RotateSparse handles the shifts (e.g., -512 is 1 hop, -1024 is 2 hops)
 	for size := 1; size < limit; size *= 2 {
-		rotated, err := rt.fheCtx.RotateSparse(current, -size)
+		rotated, err := fheCtx.RotateSparse(current, -size)
 		if err != nil {
 			if size > 1 {
 				current.Close()
@@ -626,8 +647,13 @@ func (rt *RoutingTable) DebugProbe(name string, ct *openfhe.Ciphertext, kp *open
 		return
 	} // Skip if not provided
 
+	fheCtx := rt.GetFHEContext()
+	if fheCtx == nil {
+		return
+	}
+
 	// Decrypt
-	pt, err := rt.fheCtx.CC.Decrypt(kp, ct)
+	pt, err := fheCtx.CC.Decrypt(kp, ct)
 	if err != nil {
 		fmt.Printf("❌ [DEBUG] %s: DECRYPTION FAILED (Noise > Budget)\n", name)
 		return

@@ -30,7 +30,7 @@ func BenchmarkGreedyAdaptiveE2E(b *testing.B) {
 			ps, err := pstoremem.NewPeerstore()
 			require.NoError(b, err)
 
-			rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+			rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 			require.NoError(b, err)
 			rt.EnableFHE(ctx)
 
@@ -89,7 +89,7 @@ func BenchmarkGreedyAdaptiveComponents(b *testing.B) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(b, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(b, err)
 	rt.EnableFHE(ctx)
 
@@ -176,7 +176,7 @@ func BenchmarkGreedyAdaptiveBandwidth(b *testing.B) {
 			ps, err := pstoremem.NewPeerstore()
 			require.NoError(b, err)
 
-			rt, err := NewRoutingTable(scenario.peersPerBucket, localID, time.Hour, ps, time.Hour, nil)
+			rt, err := NewRoutingTable(scenario.peersPerBucket, localID, time.Hour, ps, time.Hour, nil, nil)
 			require.NoError(b, err)
 			rt.EnableFHE(ctx)
 
@@ -232,7 +232,7 @@ func BenchmarkGreedyAdaptiveVsPaged(b *testing.B) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(b, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(b, err)
 	rt.EnableFHE(ctx)
 
@@ -297,7 +297,7 @@ func BenchmarkGreedyAdaptiveScalability(b *testing.B) {
 			ps, err := pstoremem.NewPeerstore()
 			require.NoError(b, err)
 
-			rt, err := NewRoutingTable(bucketSize, localID, time.Hour, ps, time.Hour, nil)
+			rt, err := NewRoutingTable(bucketSize, localID, time.Hour, ps, time.Hour, nil, nil)
 			require.NoError(b, err)
 			rt.EnableFHE(ctx)
 

@@ -89,7 +89,7 @@ func setupBenchmarkNetwork(b *testing.B, peerCount int) *BenchmarkSetup {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(b, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(b, err)
 	rt.EnableFHE(fheCtx)
 
@@ -293,7 +293,7 @@ func BenchmarkTraditional_NetworkSize_100(b *testing.B) {
 	local := test.RandPeerIDFatal(b)
 	localID := ConvertPeerID(local)
 	ps, _ := pstoremem.NewPeerstore()
-	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 
 	for i := 0; i < 100; i++ {
 		p := test.RandPeerIDFatal(b)
@@ -314,7 +314,7 @@ func BenchmarkTraditional_NetworkSize_1K(b *testing.B) {
 	local := test.RandPeerIDFatal(b)
 	localID := ConvertPeerID(local)
 	ps, _ := pstoremem.NewPeerstore()
-	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 
 	for i := 0; i < 1000*2; i++ {
 		p := test.RandPeerIDFatal(b)
@@ -335,7 +335,7 @@ func BenchmarkTraditional_NetworkSize_10K(b *testing.B) {
 	local := test.RandPeerIDFatal(b)
 	localID := ConvertPeerID(local)
 	ps, _ := pstoremem.NewPeerstore()
-	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 
 	for i := 0; i < 10000*2; i++ {
 		p := test.RandPeerIDFatal(b)
@@ -370,7 +370,7 @@ func TestBucketDistribution(t *testing.T) {
 		ps, err := pstoremem.NewPeerstore()
 		require.NoError(t, err)
 
-		rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+		rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 		require.NoError(t, err)
 
 		// Add peers
@@ -434,7 +434,7 @@ func TestMemoryUsage(t *testing.T) {
 		local := test.RandPeerIDFatal(t)
 		localID := ConvertPeerID(local)
 		ps, _ := pstoremem.NewPeerstore()
-		rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+		rt, _ := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 
 		for i := 0; i < size*2; i++ {
 			p := test.RandPeerIDFatal(t)
@@ -475,7 +475,7 @@ func setupBenchmarkNetworkPacked(b *testing.B, peerCount int) *BenchmarkSetup {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(b, err)
 
-	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(20, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(b, err)
 	rt.EnableFHE(fheCtx)
 

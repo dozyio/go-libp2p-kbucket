@@ -28,7 +28,7 @@ func TestPackedDebug(t *testing.T) {
 	ps, err := pstoremem.NewPeerstore()
 	require.NoError(t, err)
 
-	rt, err := NewRoutingTable(5, localID, time.Hour, ps, time.Hour, nil)
+	rt, err := NewRoutingTable(5, localID, time.Hour, ps, time.Hour, nil, nil)
 	require.NoError(t, err)
 	rt.EnableFHE(ctx)
 

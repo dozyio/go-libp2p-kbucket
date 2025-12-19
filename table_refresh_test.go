@@ -17,7 +17,7 @@ func TestGenRandPeerID(t *testing.T) {
 
 	local := test.RandPeerIDFatal(t)
 	m := pstore.NewMetrics()
-	rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+	rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil, nil)
 	require.NoError(t, err)
 
 	// generate above maxCplForRefresh fails
@@ -43,7 +43,7 @@ func TestGenRandomKey(t *testing.T) {
 		// generate routing table with random local peer ID
 		local := test.RandPeerIDFatal(t)
 		m := pstore.NewMetrics()
-		rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+		rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil, nil)
 		require.NoError(t, err)
 
 		// GenRandomKey fails for cpl >= 256
@@ -125,7 +125,7 @@ func TestRefreshAndGetTrackedCpls(t *testing.T) {
 
 	local := test.RandPeerIDFatal(t)
 	m := pstore.NewMetrics()
-	rt, err := NewRoutingTable(2, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+	rt, err := NewRoutingTable(2, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil, nil)
 	require.NoError(t, err)
 
 	// fetch cpl's
