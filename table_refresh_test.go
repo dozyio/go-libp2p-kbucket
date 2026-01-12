@@ -9,6 +9,7 @@ import (
 
 	pstore "github.com/libp2p/go-libp2p/p2p/host/peerstore"
 
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +18,7 @@ func TestGenRandPeerID(t *testing.T) {
 
 	local := test.RandPeerIDFatal(t)
 	m := pstore.NewMetrics()
-	rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+	rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil, nil)
 	require.NoError(t, err)
 
 	// generate above maxCplForRefresh fails
@@ -43,7 +44,7 @@ func TestGenRandomKey(t *testing.T) {
 		// generate routing table with random local peer ID
 		local := test.RandPeerIDFatal(t)
 		m := pstore.NewMetrics()
-		rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+		rt, err := NewRoutingTable(1, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil, nil)
 		require.NoError(t, err)
 
 		// GenRandomKey fails for cpl >= 256
@@ -125,7 +126,7 @@ func TestRefreshAndGetTrackedCpls(t *testing.T) {
 
 	local := test.RandPeerIDFatal(t)
 	m := pstore.NewMetrics()
-	rt, err := NewRoutingTable(2, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+	rt, err := NewRoutingTable(2, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil, nil)
 	require.NoError(t, err)
 
 	// fetch cpl's
@@ -142,7 +143,7 @@ func TestRefreshAndGetTrackedCpls(t *testing.T) {
 
 	// add peer IDs.
 	for i, id := range peerIDs {
-		added, err := rt.TryAddPeer(id, true, false)
+		added, err := rt.TryAddPeer(id, []ma.Multiaddr{testAddr}, true, false)
 		require.NoError(t, err)
 		require.True(t, added)
 		require.Len(t, rt.GetTrackedCplsForRefresh(), minCpl+i+1)
@@ -163,7 +164,7 @@ func TestRefreshAndGetTrackedCpls(t *testing.T) {
 	}
 
 	// add our peer ID to max out the table
-	added, err := rt.TryAddPeer(local, true, false)
+	added, err := rt.TryAddPeer(local, []ma.Multiaddr{testAddr}, true, false)
 	require.NoError(t, err)
 	require.True(t, added)
 
